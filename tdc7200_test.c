@@ -13,6 +13,8 @@ int main() {
     gpio_set_dir(LED, GPIO_OUT);
     gpio_put(LED, 1);
     printf("Configuring TDC7200 for measurements...\n");
+    //tdc7200_obj_t tdc7200_create(spi_inst_t *spi_obj, uint8_t sclk, uint8_t cs, uint8_t din, uint8_t dout, 
+    //                                            uint8_t intb, uint8_t trigg, uint32_t clk_freq);
     tdc7200_obj_t tdc = tdc7200_create_defaults();
    // void tdc7200_configure(tdc7200_obj_t *self, uint32_t clk_freq, bool force_cal, uint8_t meas_mode, bool trigg_falling,
    //     bool falling, uint8_t calibration_periods, uint8_t avg_cycles, uint8_t num_stops, 
