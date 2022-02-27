@@ -13,6 +13,9 @@
 #define LOG_OFF 0
 #define LOG LOG_INFO
 
+#define SPI_TROTTLING_US 0
+#define SPI_SPEED_HZ   25000000
+
 double tdc7200_period(uint32_t freq) { 1.0/(double)freq; }
 
 void tdc7200_write8(tdc7200_obj_t *self, const uint8_t reg, const uint8_t val) {
@@ -20,7 +23,7 @@ void tdc7200_write8(tdc7200_obj_t *self, const uint8_t reg, const uint8_t val) {
     gpio_put(self->CS, 0); // Indicate beginning of communication
     spi_write_blocking(self->spi_obj, buf, 2); // Send data[]
     gpio_put(self->CS, 1); // Signal end of communication
-    sleep_ms(10);   
+    sleep_us(SPI_TROTTLING_US);   
 }
 
 void tdc7200_write16(tdc7200_obj_t *self, const uint8_t reg, const uint16_t val) {
@@ -28,7 +31,7 @@ void tdc7200_write16(tdc7200_obj_t *self, const uint8_t reg, const uint16_t val)
     gpio_put(self->CS, 0); // Indicate beginning of communication
     spi_write_blocking(self->spi_obj, buf, 3); // Send data[]
     gpio_put(self->CS, 1); // Signal end of communication
-    sleep_ms(10);
+    sleep_us(SPI_TROTTLING_US);
 }
 
 int tdc7200_read(tdc7200_obj_t *self, const uint8_t reg, uint8_t *buf, const uint8_t nbytes) {
@@ -50,10 +53,10 @@ int tdc7200_read(tdc7200_obj_t *self, const uint8_t reg, uint8_t *buf, const uin
     // Read from register
     gpio_put(self->CS, 0);
     spi_write_blocking(self->spi_obj, msg, 1);
-    sleep_ms(10);
+    sleep_us(SPI_TROTTLING_US);
     num_bytes_read = spi_read_blocking(self->spi_obj, 0, buf, nbytes);
     gpio_put(self->CS, 1);
-    sleep_ms(10);
+    sleep_us(SPI_TROTTLING_US);
 
     return num_bytes_read; 
 }
@@ -108,7 +111,7 @@ void tdc7200_write8r(tdc7200_obj_t *self, const uint8_t reg, const uint8_t val) 
         #if LOG >= LOG_VERBOSE
         printf("(Write8r) Failed to set %x. (%i => %i)\n", reg, val, read);
         #endif
-        sleep_ms(10);
+        sleep_us(SPI_TROTTLING_US);
         tdc7200_write8(self, reg, val);
         read = tdc7200_read8(self, reg);
     }
@@ -121,7 +124,7 @@ void tdc7200_write16r(tdc7200_obj_t *self, const uint8_t reg, const uint16_t val
         #if LOG >= LOG_VERBOSE
         printf("(Write16r) Failed to set register %x. (%i => %i)\n", reg, val, read);
         #endif
-        sleep_ms(10);
+        sleep_us(SPI_TROTTLING_US);
         tdc7200_write16(self, reg, val);
         read = tdc7200_read16(self, reg);
     }
@@ -142,7 +145,7 @@ tdc7200_obj_t tdc7200_create(spi_inst_t *spi_obj, uint8_t sclk, uint8_t cs, uint
     tdc.clk_freq = clk_freq;
     tdc.clk_period = 1.0/(double)clk_freq; 
     for (int i = 0; i < MAXREG24+1; i++) { tdc.reg1[i] = 0x00; }
-    spi_init(tdc.spi_obj, MHZ_10); // Initialise spi0 at 5000kHz
+    spi_init(tdc.spi_obj, SPI_SPEED_HZ); // Initialise spi
     //Initialise GPIO pins for SPI communication
     gpio_set_function(tdc.DIN, GPIO_FUNC_SPI);
     gpio_set_function(tdc.DOUT, GPIO_FUNC_SPI);
@@ -153,6 +156,7 @@ tdc7200_obj_t tdc7200_create(spi_inst_t *spi_obj, uint8_t sclk, uint8_t cs, uint
     gpio_put(tdc.CS, 1); // Set CS High to indicate no currect SPI communication
     gpio_init(tdc.INTB); // Initialise INTB Pin
     gpio_set_dir(tdc.INTB, GPIO_IN); // Set INTB as input
+    gpio_pull_up(tdc.INTB);
     gpio_init(tdc.TRIGG); // Initialise TRIGG Pin
     gpio_set_dir(tdc.TRIGG, GPIO_IN); // Set TRIGG as input
 
@@ -375,8 +379,10 @@ void tdc7200_configure(tdc7200_obj_t *self, uint32_t clk_freq, bool force_cal, u
         switch (meas_mode) {
             case 1:
                 im_state = _IM_COARSE_OVF | _IM_MEASUREMENT;
+                break;
             case 2:
-                im_state = _IM_CLOCK_OVF | _IM_MEASUREMENT;
+                im_state = _IM_CLOCK_OVF | _IM_COARSE_OVF | _IM_MEASUREMENT;
+                break;
             default:
                 im_state = 0;
         }
@@ -461,9 +467,9 @@ void tdc7200_configure_defaults(tdc7200_obj_t *self) {
     tdc7200_configure(self, MHZ_12, true, 2, false, false, false, 10, 1, 1, 0, 0xFFFF, 0, false);
 }
 
-void tdc700_reconfigure(tdc7200_obj_t *self) {
+void tdc7200_reconfigure(tdc7200_obj_t *self) {
     tdc7200_configure(self, self->clk_freq, self->force_cal, self->meas_mode, self->trigg_falling, self->start_falling, self->stop_falling,
-    self->calibration_periods, self->avg_cycles, self->num_stops, self->clock_cntr_stop, self->clock_cntr_ovf, self->timeout, true);
+        self->calibration_periods, self->avg_cycles, self->num_stops, self->clock_cntr_stop, self->clock_cntr_ovf, self->timeout, false);
 }
 
 // returns 0 when edge detected; 1 if pin already in desired state; 2 on timeout
@@ -509,7 +515,7 @@ tdc7200_meas_t tdc7200_measure(tdc7200_obj_t *self) {
         #if LOG >= LOG_INFO
         printf("ERROR 12: TRIGG should be %s. Reset the chip by repowering or reconfigure the device.\n", (trigg_falling ? "HIGH" : "LOW"));
         #endif
-        tdc700_reconfigure(self);
+        tdc7200_reconfigure(self);
         result.error = 12;
         return result;
     }
@@ -564,10 +570,10 @@ tdc7200_meas_t tdc7200_measure(tdc7200_obj_t *self) {
         } else if (self->meas_mode == 2) {
             result.tof[j] = (result.normLSB * (double)(result.time[0]-result.time[j+1])) + ((double)result.clock_count[j] * self->clk_period);
         }
-    }
+    } 
     if ((self->reg1[INT_STATUS] & _IM_CLOCK_OVF) || (self->reg1[INT_STATUS] & _IM_COARSE_OVF)) {
         result.error = 3;
-        return result;
+//        return result;
     }
     result.error = 0;
     return result;

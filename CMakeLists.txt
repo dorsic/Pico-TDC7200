@@ -2,26 +2,34 @@ cmake_minimum_required(VERSION 3.12)
 include($ENV{PICO_SDK_PATH}/external/pico_sdk_import.cmake)
 include($ENV{PICO_SDK_PATH}/tools/CMakeLists.txt)
 
-project(tdc7200_test)
-#project(tdc7200_test C CXX)
-#set(CMAKE_C_STANDARD 11)
-#set(CMAKE_CXX_STANDARD 17)
+project(ts_controller C CXX)
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 
 pico_sdk_init()
 
 add_executable(${PROJECT_NAME} 
-    TDC7200/tdc7200.c 
-    tdc7200_test.c
+    ts_controller.cpp
+    CounterModule_v1/counter_module_v1.c
 )
 
-#pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/test.pio)
+pico_set_program_name(${PROJECT_NAME} "TS-Controller")
+pico_set_program_version(${PROJECT_NAME} "0.1")
 
-target_sources(${PROJECT_NAME} PRIVATE tdc7200_test.c
+pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/CounterModule_v1/uart.pio)
+
+target_sources(${PROJECT_NAME} PRIVATE ts_controller.cpp
     TDC7200/tdc7200.c
+    CounterModule_v1/counter_module_v1.c
+    SCPI_Parser/Vrekrer_scpi_parser.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}
     pico_stdlib
+    pico_stdio
+    pico_multicore
+    hardware_timer
+    hardware_pio
     hardware_spi
 )
 

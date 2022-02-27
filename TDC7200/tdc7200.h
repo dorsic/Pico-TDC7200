@@ -165,7 +165,6 @@ typedef struct _tdc7200_obj_t {
     uint16_t clock_cntr_ovf;
     double timeout;
     bool retain_state;
-
     uint32_t reg1[MAXREG24+1];
 } tdc7200_obj_t;
 
@@ -183,6 +182,8 @@ typedef struct _tdc7200_meas_t {
 tdc7200_obj_t tdc7200_create(spi_inst_t *spi_obj, uint8_t sclk, uint8_t cs, uint8_t din, uint8_t dout, 
                                                 uint8_t intb, uint8_t trigg, uint32_t clk_freq);
 tdc7200_obj_t tdc7200_create_defaults();
+//    return tdc7200_create(spi1, 10, 13, 11, 12, 14, 15, 10000000);
+
 
 void tdc7200_configure(tdc7200_obj_t *self, uint32_t clk_freq, bool force_cal, uint8_t meas_mode, bool trigg_edge_falling,
         bool start_edge_falling, bool stop_edge_falling, uint8_t calibration_periods, uint8_t avg_cycles, uint8_t num_stops, 
