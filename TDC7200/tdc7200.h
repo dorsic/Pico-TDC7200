@@ -134,6 +134,8 @@ extern "C" {
 #define MHZ_10 10000000
 #define MHZ_12 12000000
 
+//#define GATE_GPIO 17
+
 #ifdef  __cplusplus
 }
 #endif /*  __cplusplus */
@@ -163,6 +165,7 @@ typedef struct _tdc7200_obj_t {
     uint8_t num_stops;
     uint16_t clock_cntr_stop;
     uint16_t clock_cntr_ovf;
+    uint16_t coarse_cntr_ovf;
     double timeout;
     bool retain_state;
     uint32_t reg1[MAXREG24+1];
@@ -187,7 +190,7 @@ tdc7200_obj_t tdc7200_create_defaults();
 
 void tdc7200_configure(tdc7200_obj_t *self, uint32_t clk_freq, bool force_cal, uint8_t meas_mode, bool trigg_edge_falling,
         bool start_edge_falling, bool stop_edge_falling, uint8_t calibration_periods, uint8_t avg_cycles, uint8_t num_stops, 
-        uint16_t clock_cntr_stop, uint16_t clock_cntr_ovf, uint32_t timeout_ns, bool retain_state);
+        uint16_t clock_cntr_stop, uint16_t coarse_cnt_ovf, uint16_t clock_cntr_ovf, uint32_t timeout_ns, bool retain_state);
 
 void tdc7200_configure_defaults(tdc7200_obj_t *self);
 void tdc7200_reconfigure(tdc7200_obj_t *self);

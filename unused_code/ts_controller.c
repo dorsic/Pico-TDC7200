@@ -24,7 +24,7 @@ void led_off(int32_t param) {
 void pdiv_set_freq(int32_t param) {
     gpio_put(LED, 1);
     if (param > 0) {
-        cm1_pdiv_set_freq_hz(param);
+        cm_pdiv_set_freq_hz(param);
         printf("Set divider freq to %s\n", param);
     }
     gpio_put(LED, 0);
@@ -33,7 +33,7 @@ void pdiv_set_freq(int32_t param) {
 void pdiv_set_plength(int32_t param) {
     gpio_put(LED, 1);
     if (param > 0) {
-        cm1_pdiv_set_plength_ns(param);
+        cm_pdiv_set_plength_ns(param);
         printf("Set pulse length to %s\n", param);
     }
     gpio_put(LED, 0);
@@ -42,7 +42,7 @@ void pdiv_set_plength(int32_t param) {
 void pdiv_slide(int32_t param) {
     gpio_put(LED, 1);
     if (param > 0) {
-        cm1_pdiv_slide(param);
+        cm_pdiv_slide(param);
         printf("Divider postponed by %s cycles \n", param);
     }
     gpio_put(LED, 1);
@@ -51,14 +51,14 @@ void pdiv_slide(int32_t param) {
 void pdiv_on(int32_t param) {
     gpio_put(LED, 1);
     printf("Enabling divider.\n");
-    cm1_pdiv_on();
+    cm_pdiv_on();
     gpio_put(LED, 0);
 }
 
 void pdiv_off(int32_t param) {
     gpio_put(LED, 1);
     printf("Disabling divider.\n");
-    cm1_pdiv_off();
+    cm_pdiv_off();
     gpio_put(LED, 0);
 }
 
@@ -96,7 +96,7 @@ int main() {
     gpio_put(LED, 0);
 
     printf("Awaiting messages in 1s...\n");
-//    cm1_initialize();
+//    cm_initialize();
 
     initialize_scpi();
     sleep_ms(1000);
@@ -109,7 +109,7 @@ int main() {
 
 /*
         gpio_put(LED, 0);
-        msmt = cm1_measure();
+        msmt = cm_measure();
         gpio_put(LED, 1);
         if (msmt.error == 0) {
             for (int i = 0; i < msmt.num_stops; i++) {

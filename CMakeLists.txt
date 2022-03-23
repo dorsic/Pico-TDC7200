@@ -10,23 +10,27 @@ pico_sdk_init()
 
 add_executable(${PROJECT_NAME} 
     ts_controller.cpp
-    CounterModule_v1/counter_module_v1.c
+#    CounterModule/counter_module_v1.c
+    CounterModule/counter_module_v2.c    
 )
 
 pico_set_program_name(${PROJECT_NAME} "TS-Controller")
-pico_set_program_version(${PROJECT_NAME} "0.1")
+pico_set_program_version(${PROJECT_NAME} "0.2")
 
-pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/CounterModule_v1/uart.pio)
+pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/CounterModule/uart.pio)
+pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/CounterModule/tic_gate.pio)
 
 target_sources(${PROJECT_NAME} PRIVATE ts_controller.cpp
     TDC7200/tdc7200.c
-    CounterModule_v1/counter_module_v1.c
+#    CounterModule/counter_module_v1.c
+    CounterModule/counter_module_v2.c
     SCPI_Parser/Vrekrer_scpi_parser.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}
     pico_stdlib
     pico_stdio
+    pico_double
     pico_multicore
     hardware_timer
     hardware_pio

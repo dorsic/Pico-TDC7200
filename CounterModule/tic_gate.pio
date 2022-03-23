@@ -1,0 +1,33 @@
+.program tic_gate
+ 
+ ; GPIO 15 is the TRIGG signal from TDC7200 signaling start of the measurement
+ ; GPIO 14 is the INTB signal from TDC7200 signaling end of the measurement (or timeout)
+ ; When TRIGG is high TDC7200 is configured and waiting for the START impulse to happen
+ ; On START impulse the TRIGG goes LOW
+ ; INTB goes HIGH to signaling the measurement is completed. In between is LOW
+
+.side_set 1
+
+.wrap_target
+    wait 1 gpio 15 side 1   ; measurement initialized, gate closed
+    wait 0 gpio 15 side 0   ; start of first measurement, gate opened
+    wait 1 gpio 14 side 0   ; first measurement completed
+    wait 0 gpio 14 side 0   ; wait for INTB to settle down
+    wait 1 gpio 14 side 1   ; second measurement completed, gate closed
+    wait 0 gpio 15 side 1   ; wait for TRIGG to settle down
+.wrap
+
+
+% c-sdk {
+// this is a raw helper function for use by the user which sets up the GPIO output, and configures the SM to output on a particular pin
+
+void tic_gate_program_init(PIO pio, uint sm, uint offset, uint sideset_pin) {
+   pio_gpio_init(pio, sideset_pin);
+   pio_sm_set_consecutive_pindirs(pio, sm, sideset_pin, 1, true);
+   pio_sm_config c = tic_gate_program_get_default_config(offset);
+   sm_config_set_set_pins(&c, sideset_pin, 1);
+   sm_config_set_sideset_pins(&c, sideset_pin);
+   sm_config_set_sideset(&c, 1, false, false);
+   pio_sm_init(pio, sm, offset, &c);
+}
+%}

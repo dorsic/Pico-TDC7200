@@ -1,17 +1,19 @@
 
 #include <stdlib.h>
-//#include <math.h>
 #include <stdio.h>
-//#include <stdint.h>
-//#include <string.h>
 #include "tdc7200.h"
 #include "pico/stdlib.h"
+#include "pico/double.h"
 #include "hardware/spi.h"
+
+#ifdef GATE_GPIO
+#include "hardware/gpio.h"
+#endif
 
 #define LOG_VERBOSE 2
 #define LOG_INFO 1
 #define LOG_OFF 0
-#define LOG LOG_INFO
+#define LOG LOG_OFF
 
 #define SPI_TROTTLING_US 0
 #define SPI_SPEED_HZ   25000000
@@ -102,7 +104,17 @@ void tdc7200_read_regs24(tdc7200_obj_t *self) {
         #endif
         i += 3;
     }
-}    
+}
+
+void tdc7200_read_1stop_regs(tdc7200_obj_t *self) {
+    self->reg1[CALIBRATION1] = tdc7200_read24(self, CALIBRATION1);
+    self->reg1[CALIBRATION2] = tdc7200_read24(self, CALIBRATION2);
+    self->reg1[TIME1] = tdc7200_read24(self, TIME1);
+    if (self->meas_mode == 2) {
+        self->reg1[CLOCK_COUNT1] = tdc7200_read24(self, CLOCK_COUNT1);
+        self->reg1[TIME2] = tdc7200_read16(self, TIME2);
+    }
+}
 
 void tdc7200_write8r(tdc7200_obj_t *self, const uint8_t reg, const uint8_t val) {
     tdc7200_write8(self, reg, val);
@@ -169,14 +181,15 @@ tdc7200_obj_t tdc7200_create_defaults() {
 
 void tdc7200_configure(tdc7200_obj_t *self, uint32_t clk_freq, bool force_cal, uint8_t meas_mode, bool trigg_edge_falling,
         bool start_edge_falling, bool stop_edge_falling, uint8_t calibration_periods, uint8_t avg_cycles, uint8_t num_stops, 
-        uint16_t clock_cntr_stop, uint16_t clock_cntr_ovf, uint32_t timeout_ns, bool retain_state) {
+        uint16_t clock_cntr_stop, uint16_t coarse_cntr_ovf, uint16_t clock_cntr_ovf, uint32_t timeout_ns, bool retain_state) {
     
     uint8_t reg1[MAXREG24+1];
     uint8_t cf1_state;
     uint8_t cf2_state;
     uint8_t im_state;
     uint16_t clock_cntr_stp;
-    uint16_t ovf;
+    uint16_t clock_ovf;
+    uint16_t coarse_ovf;
 
     // Configuration register 1
     if (retain_state) {
@@ -253,7 +266,7 @@ void tdc7200_configure(tdc7200_obj_t *self, uint32_t clk_freq, bool force_cal, u
     uint8_t cf1_read = tdc7200_read8(self, CONFIG1);
     if ((cf1_read == 0) && (cf1_state != 0)) {
         printf("Are you sure the TDC7200 is connected to the Pi's SPI interface?\n");
-        exit(1);
+        return;
     }
 
 //    tdc7200_write8r(self, CONFIG1, cf1_state);
@@ -381,7 +394,7 @@ void tdc7200_configure(tdc7200_obj_t *self, uint32_t clk_freq, bool force_cal, u
                 im_state = _IM_COARSE_OVF | _IM_MEASUREMENT;
                 break;
             case 2:
-                im_state = _IM_CLOCK_OVF | _IM_COARSE_OVF | _IM_MEASUREMENT;
+                im_state = _IM_CLOCK_OVF | _IM_MEASUREMENT;
                 break;
             default:
                 im_state = 0;
@@ -413,63 +426,98 @@ void tdc7200_configure(tdc7200_obj_t *self, uint32_t clk_freq, bool force_cal, u
     uint32_t tmout = 0;
     // Set overflow timeout.
     if (retain_state) {
-        ovf = self->reg1[CLOCK_CNTR_OVF];
-        tmout = (uint32_t)(ovf * (self->clk_period * 1.0E9));
+        coarse_ovf = self->reg1[COARSE_CNTR_OVF];
+        clock_ovf = self->reg1[CLOCK_CNTR_OVF];
+        if (meas_mode == 1) {
+            tmout = (uint32_t)(0.055 * coarse_cntr_ovf);
+            printf("Setting overflow timeout from retained state (coarse counter overflow): %u = timeout %u ns.\n", coarse_ovf, tmout);
+        } else {
+            tmout = (uint32_t)(clock_ovf * (self->clk_period * 1.0E9));
+            printf("Setting overflow timeout from retained state (clock counter overflow): %u = timeout %u ns.\n", clock_ovf, tmout);
+        }
         #if LOG >= LOG_INFO
-        printf("Setting overflow timeout from retained state: %u = timeout %u ns.\n", ovf, tmout);
         #endif
-    } else if (timeout_ns == 0) {
-        ovf = clock_cntr_ovf;
-        tmout = (uint32_t)(ovf * (self->clk_period * 1.0E9));;
+    } else if (timeout_ns == 0 && meas_mode == 2) {
+        clock_ovf = clock_cntr_ovf;
+        tmout = (uint32_t)(clock_ovf * (self->clk_period * 1.0E9));;
         #if LOG >= LOG_INFO
-        printf("Setting overflow timeout from owf: %u = timeout %u ns.\n", ovf, tmout);
+        printf("Setting overflow timeout from clock_ovf: %u ~= timeout %u ns.\n", clock_ovf, tmout);
+        #endif
+    } else if (timeout_ns == 0 && meas_mode == 1) {
+        coarse_ovf = coarse_cntr_ovf;
+        tmout = (uint32_t)(coarse_ovf * 0.055);
+        #if LOG >= LOG_INFO
+        printf("Setting overflow timeout from coarse_ovf: %u ~= timeout %u ns.\n", coarse_ovf, tmout);
         #endif
     } else {
         tmout = timeout_ns;
-        ovf = (uint32_t)((double)timeout_ns / (self->clk_period*1.0E9));
-        #if LOG >= LOG_INFO
-        printf("Setting overflow timeout from timeout: %u = timeout %u ns\n", ovf, timeout_ns);
-        #endif
+        if (meas_mode == 1) {
+            coarse_ovf = (uint32_t)((double)timeout_ns / 0.055);
+            #if LOG >= LOG_INFO
+            printf("Setting coarse overflow timeout from timeout: %u ~= timeout %u ns\n", coarse_ovf, timeout_ns);
+            #endif
+        } else {
+            clock_ovf = (uint32_t)((double)timeout_ns / (self->clk_period*1.0E9));
+            #if LOG >= LOG_INFO
+            printf("Setting clock overflow timeout from timeout: %u = ~timeout %u ns\n", clock_ovf, timeout_ns);
+            #endif
+        }            
     }
-    self->clock_cntr_ovf = ovf;
+    self->coarse_cntr_ovf = coarse_ovf;
+    self->clock_cntr_ovf = clock_ovf;
     self->timeout = tmout;
 
     #if LOG >= LOG_INFO
-    if ((meas_mode == 2) && (tmout < 2000)) {
-        printf("WARNING: Timeout < 2000 nS and meas_mode == 2.\n");
+    if ((meas_mode == 2) && (tmout < 500)) {
+        printf("WARNING: Timeout < 500 nS and meas_mode == 2.\n");
         printf("Maybe measurement mode 1 would be better?\n");
-    } else if ((meas_mode == 1) && (tmout > 2000)) {
-        printf("WARNING: Timeout > 2000 nS and meas_mode == 1.\n");
+    } else if ((meas_mode == 1) && (tmout > 500)) {
+        printf("WARNING: Timeout > 500 nS and meas_mode == 1.\n");
         printf("Maybe measurement mode 2 would be better?\n");
     }
     #endif
 
-    if (ovf <= clock_cntr_stop) {
-        ovf = clock_cntr_stop + 1;
+    if (clock_ovf <= clock_cntr_stop) {
+        clock_ovf = clock_cntr_stop + 1;
         #if LOG >= LOG_INFO
         printf("WARNING: clock_cntr_ovf must be greater than clock_cntr_stop.\n");
         printf("otherwise your measurement will stop before it starts.\n");
-        printf("Set clock_cntr_ovf to %x\n", ovf);
+        printf("Set clock_cntr_ovf to %x\n", clock_ovf);
         #endif
     }
-    if (ovf > 0xFFFF) {
+    if (clock_ovf > 0xFFFF) {
         printf("FATAL: clock_cntr_ovf exceeds max of 0xFFFF.\n");
         exit(1);
     }
 
-    self->reg1[CLOCK_CNTR_OVF] = ovf;
-    self->reg1[CLOCK_CNTR_OVF_H] = (ovf >> 8) & 0xFF;
-    self->reg1[CLOCK_CNTR_OVF_L] = ovf & 0xFF;
-    tdc7200_write16r(self, CLOCK_CNTR_OVF_H, ovf);
+    if (meas_mode == 1) {
+        self->reg1[COARSE_CNTR_OVF] = coarse_ovf;
+        self->reg1[COARSE_CNTR_OVF_H] = (coarse_ovf >> 8) & 0xFF;
+        self->reg1[COARSE_CNTR_OVF_L] = coarse_ovf & 0xFF;
+        tdc7200_write16r(self, COARSE_CNTR_OVF_H, coarse_ovf);
+    }
+    else if (meas_mode == 2) {
+        self->reg1[CLOCK_CNTR_OVF] = clock_ovf;
+        self->reg1[CLOCK_CNTR_OVF_H] = (clock_ovf >> 8) & 0xFF;
+        self->reg1[CLOCK_CNTR_OVF_L] = clock_ovf & 0xFF;
+        tdc7200_write16r(self, CLOCK_CNTR_OVF_H, clock_ovf);
+    }
+
+    #ifdef GATE_GPIO
+    gpio_init(GATE_GPIO);
+    gpio_set_dir(GATE_GPIO, true);
+    gpio_put(GATE_GPIO, 0);
+    gpio_pull_down(GATE_GPIO);
+    #endif
  }
 
 void tdc7200_configure_defaults(tdc7200_obj_t *self) {
-    tdc7200_configure(self, MHZ_12, true, 2, false, false, false, 10, 1, 1, 0, 0xFFFF, 0, false);
+    tdc7200_configure(self, MHZ_12, true, 2, false, false, false, 10, 1, 1, 0, 0x2F00, 0xFFFF, 0, false);
 }
 
 void tdc7200_reconfigure(tdc7200_obj_t *self) {
     tdc7200_configure(self, self->clk_freq, self->force_cal, self->meas_mode, self->trigg_falling, self->start_falling, self->stop_falling,
-        self->calibration_periods, self->avg_cycles, self->num_stops, self->clock_cntr_stop, self->clock_cntr_ovf, self->timeout, false);
+        self->calibration_periods, self->avg_cycles, self->num_stops, self->clock_cntr_stop, self->coarse_cntr_ovf, self->clock_cntr_ovf, self->timeout, false);
 }
 
 // returns 0 when edge detected; 1 if pin already in desired state; 2 on timeout
@@ -490,8 +538,8 @@ int _wait_for_edge(uint8_t pin, bool falling, uint32_t timeout_us) {
         return 1;
     }
     while (!time_reached(tmtime) && (gpio_get(pin) != (!falling))) {
-
     }
+    
     bool is_tm = time_reached(tmtime);
     if (is_tm) {
         #if LOG >= LOG_VERBOSE
@@ -502,7 +550,7 @@ int _wait_for_edge(uint8_t pin, bool falling, uint32_t timeout_us) {
         printf("Done.\n");
         #endif
     }
-    return (time_reached(tmtime)? 2: 0);
+    return is_tm? 2: 0;
 }
 
 tdc7200_meas_t tdc7200_measure(tdc7200_obj_t *self) {
@@ -544,7 +592,11 @@ tdc7200_meas_t tdc7200_measure(tdc7200_obj_t *self) {
     }
 
     // Read everything in and see what we got.
-    tdc7200_read_regs24(self);
+    if (self->meas_mode == 1) {
+        tdc7200_read_1stop_regs(self);
+    } else {
+        tdc7200_read_regs24(self);
+    }
     self->reg1[INT_STATUS] = tdc7200_read8(self, INT_STATUS);
     result.int_status = self->reg1[INT_STATUS];
     result.calibration[0] = self->reg1[CALIBRATION1];
@@ -568,13 +620,19 @@ tdc7200_meas_t tdc7200_measure(tdc7200_obj_t *self) {
         if (self->meas_mode == 1) {
             result.tof[j] = result.normLSB * (double)result.time[j];
         } else if (self->meas_mode == 2) {
-            result.tof[j] = (result.normLSB * (double)(result.time[0]-result.time[j+1])) + ((double)result.clock_count[j] * self->clk_period);
+            double tof;
+            if (result.time[0]>result.time[j+1])
+                tof = (double)(result.time[0]-result.time[j+1]);
+            else 
+                tof = -(double)(result.time[j+1]-result.time[0]);
+            result.tof[j] = (result.normLSB * tof) + ((double)result.clock_count[j] * self->clk_period);
         }
     } 
     if ((self->reg1[INT_STATUS] & _IM_CLOCK_OVF) || (self->reg1[INT_STATUS] & _IM_COARSE_OVF)) {
         result.error = 3;
 //        return result;
+    } else {
+        result.error = 0;
     }
-    result.error = 0;
     return result;
 }

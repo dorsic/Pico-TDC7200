@@ -420,49 +420,6 @@ char SCPI_Interface :: getchar_non_blocking() {
     return (ch != PICO_ERROR_TIMEOUT)? (char) ch: '\0';
 }
 
-void SCPI_Interface :: putchars(char* message) {
+void SCPI_Interface :: putchars(const char* message) {
     printf(message);
 }
-
-/*
-SCPI_Printf_Interface::SCPI_Printf_Interface() {}
-
-char SCPI_Printf_Interface :: getchar_non_blocking() {
-    int ch = getchar_timeout_us(0);
-    return (ch != PICO_ERROR_TIMEOUT)? (char) ch: '\0';
-}
-
-void SCPI_Printf_Interface :: putchars(char* message) {
-    printf(message);
-}
-
-SCPI_SPI_Interface::SCPI_SPI_Interface(spi_inst_t *spi, uint8_t cs) {
-    spi_ = spi;
-    cs_ = cs;
-}
-
-char SCPI_SPI_Interface::getchar_non_blocking() {
-    if (bufidx_ > 0) {
-      bufidx_--;
-      return (char)buf_[bufidx_];
-    }
-    if (spi_is_readable(spi_)) {
-      gpio_put(cs_, 0);
-      bufidx_ = spi_read_blocking(spi_, 0, buf_, 32);
-      gpio_put(cs_, 1);
-
-      bufidx_--;
-      return (char)buf_[bufidx_];
-    }
-    return '\0';    
-}
-
-void SCPI_SPI_Interface::putchars(char* message) {
-    gpio_put(cs_, 0);
-    for (uint8_t i = 0; i<strlen(message); i++) {
-      buf_[i] = (uint8_t)message[i];
-    }
-    spi_write_blocking(spi_, buf_, strlen(message));
-    gpio_put(cs_, 1);  
-}
-*/

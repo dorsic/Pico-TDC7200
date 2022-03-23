@@ -8,7 +8,7 @@
 tdc7200_obj_t tdc;
 bool _tdc_need_reconfigure = false;
 
-void cm1_write_spi(spi_inst_t *spi, const uint8_t cs, const uint8_t reg, const uint32_t data) {
+void cm_write_spi(spi_inst_t *spi, const uint8_t cs, const uint8_t reg, const uint32_t data) {
     uint8_t msg[5];
 
     msg[0] = 0x00 || reg;
@@ -22,7 +22,7 @@ void cm1_write_spi(spi_inst_t *spi, const uint8_t cs, const uint8_t reg, const u
     gpio_put(cs, 1);
 }
 
-uint32_t cm1_read_spi(spi_inst_t *spi, const uint8_t cs, const uint8_t reg) {
+uint32_t cm_read_spi(spi_inst_t *spi, const uint8_t cs, const uint8_t reg) {
     uint8_t msg = 0x80 | (0 << 6) | reg;
     uint8_t data[4];
 
@@ -34,7 +34,7 @@ uint32_t cm1_read_spi(spi_inst_t *spi, const uint8_t cs, const uint8_t reg) {
     return (data[0] << 24) + (data[1] << 16) + (data[2] << 8) + data[3];
 }
 
-uint16_t cm1_uart_readline() {
+uint16_t cm_uart_readline() {
     uint32_t st = time_us_32();
     uint16_t n = 0;
     char c = uart_rx_program_getc(pio0, 1);
@@ -62,12 +62,12 @@ void initialize_uart() {
     uart_rx_program_init(pio, sm, offset, 19, 9600);
 
     uart_tx_program_puts(pio, 0, "*IDN?");    
-    if (0 == cm1_uart_readline()) {
+    if (0 == cm_uart_readline()) {
         printf("WARNING: Cannot communicate with Pico divider.\n");
     }
 }
 
-void cm1_initialize() {
+void cm_initialize() {
     // init GPIOs
 
     // init PicoDIV SPI communication
@@ -111,30 +111,30 @@ void cm1_initialize() {
 }
 
 // valid source CHA | CHB
-void cm1_set_start_source(uint8_t source) {
-    if (source != SOURCE_CHA && source != SOURCE_CHB) {
+void cm_set_start_source(uint8_t source) {
+    if (source != SOURCE_CH1 && source != SOURCE_CH2) {
         printf("Invalid start source for Counter Module. (%u).", source);
         return;
     }
-    gpio_put(SWCHIN1_PIN, (source == SOURCE_CHA));
+    gpio_put(SWCHIN1_PIN, (source == SOURCE_CH1));
 }
 
 // valid source CHB | DIVCLK | REFCLK
-void cm1_set_stop_source(uint8_t source) {
-    if (source != SOURCE_CHB && source != SOURCE_DIVCLK && source != SOURCE_REFCLK) {
+void cm_set_stop_source(uint8_t source) {
+    if (source != SOURCE_CH2 && source != SOURCE_DIVCLK && source != SOURCE_REFCLK) {
         printf("Invalid stop source for Counter Module. (%u).", source);
         return;
     }
-    if (source == SOURCE_CHB) {
-        gpio_put(SWCHIN2_PIN, (source == SOURCE_CHB));
+    if (source == SOURCE_CH2) {
+        gpio_put(SWCHIN2_PIN, (source == SOURCE_CH2));
     } else {
-        gpio_put(SWCHIN2_PIN, (source == SOURCE_CHB));
+        gpio_put(SWCHIN2_PIN, (source == SOURCE_CH2));
         gpio_put(SWCLKSEL1_PIN, (source == SOURCE_REFCLK));
     }
 }
 
 // valid source INTCLK | EXTCLK
-void cm1_set_refclock(uint8_t source, uint32_t freq_hz) {
+void cm_set_refclock(uint8_t source, uint32_t freq_hz) {
     if (source != SOURCE_INTCLK && source != SOURCE_EXTCLK) {
         printf("Invalid ref clock source for Counter Module. (%u).", source);
         return;
@@ -144,14 +144,14 @@ void cm1_set_refclock(uint8_t source, uint32_t freq_hz) {
 
 // PicoDIV functions
 
-uint8_t cm1_pdiv_get_refclock() {
- //   return cm1_read_spi(pdiv_spi, PDIVCS_PIN, 0x01) & 0xFF;
+uint8_t cm_pdiv_get_refclock() {
+ //   return cm_read_spi(pdiv_spi, PDIVCS_PIN, 0x01) & 0xFF;
     return 0;
 }
 
 // valid source TCXO | REFCLK
-void cm1_pdiv_set_refclock(uint8_t source, uint32_t freq_hz) {
-    if (source != SOURCE_TCXO && source != SOURCE_EXTCLK) {
+void cm_pdiv_set_refclock(uint8_t source, uint32_t freq_hz) {
+    if (source != SOURCE_XO && source != SOURCE_EXTCLK) {
         printf("Invalid ref clock source for PicoDIV. (%u)", source);
         return;
     }
@@ -166,23 +166,23 @@ void cm1_pdiv_set_refclock(uint8_t source, uint32_t freq_hz) {
         pio_sm_restart(pio0, 0);
         pio_sm_set_enabled(pio0, 0, true);
         uart_tx_program_puts(pio0, 0, d);
-        cm1_uart_readline();
-    } else if (source == SOURCE_TCXO) {
+        cm_uart_readline();
+    } else if (source == SOURCE_XO) {
         pio_sm_drain_tx_fifo(pio0, 0);
         sprintf(d, "CONF:REF:TCXO\n");
         pio_sm_set_enabled(pio0, 0, false);
         pio_sm_restart(pio0, 0);
         pio_sm_set_enabled(pio0, 0, true);
         uart_tx_program_puts(pio0, 0, d);
-        cm1_uart_readline();
+        cm_uart_readline();
     }
 }
 
-uint32_t cm1_pdiv_get_refclock_freq() {
+uint32_t cm_pdiv_get_refclock_freq() {
     return 0;
 }
 
-void cm1_pdiv_set_freq_hz(uint32_t freq_hz) {
+void cm_pdiv_set_freq_hz(uint32_t freq_hz) {
     char d[32];
     sprintf(d, "CONF:DIV:FREQ %u\n", freq_hz);
     pio_sm_restart(pio0, 0);
@@ -190,23 +190,23 @@ void cm1_pdiv_set_freq_hz(uint32_t freq_hz) {
     printf("%s", d);
 }
 
-uint32_t cm1_pdiv_get_freq_hz() {
+uint32_t cm_pdiv_get_freq_hz() {
     return 0;
 }
 
-void cm1_pdiv_set_plength_ns(uint32_t plength_ns) {
+void cm_pdiv_set_pulselength(char* pulselength) {
     char d[32];
-    sprintf(d, "CONF:DIV:PULS %u\n", plength_ns);
+    sprintf(d, "CONF:DIV:PULS %s\n", pulselength);
     pio_sm_restart(pio0, 0);
     uart_tx_program_puts(pio0, 0, d);
 }
 
-uint32_t cm1_pdiv_get_plength_ns() {
+uint32_t cm_pdiv_get_plength_ns() {
     return 0;
 }
 
 
-void cm1_pdiv_slide(uint32_t n_refclock_cycles) {
+void cm_pdiv_delay(uint32_t n_refclock_cycles) {
     char d[32];
     sprintf(d, "DIV:SLID %u\n", n_refclock_cycles);
     pio_sm_set_enabled(pio0, 0, false);
@@ -215,31 +215,26 @@ void cm1_pdiv_slide(uint32_t n_refclock_cycles) {
     uart_tx_program_puts(pio0, 0, d);
 }
 
-void cm1_pdiv_on() {
+void cm_pdiv_enable(bool on) {
     char d[32];
     pio_sm_drain_tx_fifo(pio0, 0);
-    sprintf(d, "DIV:ENAB ON\n");
     pio_sm_set_enabled(pio0, 0, false);
     pio_sm_restart(pio0, 0);
     pio_sm_set_enabled(pio0, 0, true);
+    if (on)
+        sprintf(d, "DIV:ENAB ON\n");
+    else
+        sprintf(d, "DIV:ENAB OFF\n");
     uart_tx_program_puts(pio0, 0, d);
-    cm1_uart_readline();
-}
-
-void cm1_pdiv_off() {
-    char d[32];
-    pio_sm_drain_tx_fifo(pio0, 0);
-    sprintf(d, "DIV:ENAB OFF\n");
-    pio_sm_set_enabled(pio0, 0, false);
-    pio_sm_restart(pio0, 0);
-    pio_sm_set_enabled(pio0, 0, true);
-    uart_tx_program_puts(pio0, 0, d);
+    if (on) {
+        cm_uart_readline();
+    }    
 }
 
 
 // TDC7200
 
-tdc7200_meas_t cm1_tic_measure() {
+tdc7200_meas_t cm_tic_measure() {
     if (_tdc_need_reconfigure) {
         tdc7200_reconfigure(&tdc);
         _tdc_need_reconfigure = false;
@@ -247,7 +242,7 @@ tdc7200_meas_t cm1_tic_measure() {
     return tdc7200_measure(&tdc);
 }
 
-bool cm1_tic_set_meas_mode(uint8_t measurement_mode) {
+bool cm_tic_set_meas_mode(uint8_t measurement_mode) {
     if ((measurement_mode-1) > 1) {
         #ifdef DEBUG
             printf("Invalid measurement mode (%d).\n", measurement_mode);
@@ -259,7 +254,7 @@ bool cm1_tic_set_meas_mode(uint8_t measurement_mode) {
     return true;
 }
 
-bool cm1_tic_set_calperiods(uint8_t periods) {
+bool cm_tic_set_calperiods(uint8_t periods) {
     if (periods == 2 || periods == 10 || periods == 20 || periods == 40) {
         tdc.calibration_periods = periods;
         _tdc_need_reconfigure = true;
@@ -272,12 +267,12 @@ bool cm1_tic_set_calperiods(uint8_t periods) {
     }
 }
 
-bool cm1_tic_set_force_calibration(bool force) {
+bool cm_tic_set_force_calibration(bool force) {
     tdc.force_cal = force;
     _tdc_need_reconfigure = true;
 }
 
-bool cm1_tic_set_nstops(uint8_t nstops) {
+bool cm_tic_set_nstops(uint8_t nstops) {
     if ((nstops > 0) && (nstops < 6)) {
         tdc.num_stops = nstops;
         _tdc_need_reconfigure = true;
