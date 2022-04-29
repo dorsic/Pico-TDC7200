@@ -312,6 +312,8 @@ void SCPI_Parser::Execute(SCPI_Interface interface, char* message) {
     SCPI_Parameters parameters(commands.not_processed_message);
     SCPI_HASH_TYPE code = this->GetCommandCode_(commands);
     uint8_t i;
+//    PrintDebugInfo();
+//    printf("Command code %d\n", code);
     for (i = 0; i < codes_size_; i++)
       if (valid_codes_[i] == code) {
         (*callers_[i])(commands, parameters, interface);

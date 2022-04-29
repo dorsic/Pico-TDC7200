@@ -35,6 +35,7 @@ target_link_libraries(${PROJECT_NAME}
     hardware_timer
     hardware_pio
     hardware_spi
+    hardware_clocks
 )
 
 pico_enable_stdio_usb(${PROJECT_NAME} 1)

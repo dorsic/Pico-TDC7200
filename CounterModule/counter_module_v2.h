@@ -77,23 +77,23 @@ void cm_initialize();
 // TDC7200 functions
 
 // valid source XO | EXTCLK | INTCLK
-bool cm_set_refclock(uint8_t source, uint32_t freq_hz);
+uint8_t cm_set_refclock(uint8_t source, uint32_t freq_hz);
 
 tdc7200_meas_t cm_tic_measure();
 
-bool cm_tic_set_meas_mode(uint8_t measurement_mode);
+uint8_t cm_tic_set_meas_mode(uint8_t measurement_mode);
 
-bool cm_tic_set_calperiods(uint8_t periods);
+uint8_t cm_tic_set_calperiods(uint8_t periods);
 
-bool cm_tic_set_force_calibration(bool force);
+uint8_t cm_tic_set_force_calibration(uint8_t force);
 
-bool cm_tic_set_nstops(uint8_t nstops);
+uint8_t cm_tic_set_nstops(uint8_t nstops);
 
-bool cm_tic_set_edge(uint8_t channel, bool falling);
+uint8_t cm_tic_set_edge(uint8_t channel, uint8_t falling);
 
-bool cm_tic_pet_enable(bool on);
+uint8_t cm_tic_pet_enable(uint8_t on);
 
-bool cm_tic_pet_enabled();
+uint8_t cm_tic_pet_enabled();
 
 uint8_t cm_get_meas_mode();
 

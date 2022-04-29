@@ -13,7 +13,7 @@
 #define LOG_VERBOSE 2
 #define LOG_INFO 1
 #define LOG_OFF 0
-#define LOG LOG_OFF
+#define LOG LOG_INFO
 
 #define SPI_TROTTLING_US 0
 #define SPI_SPEED_HZ   25000000
@@ -199,58 +199,58 @@ void tdc7200_configure(tdc7200_obj_t *self, uint32_t clk_freq, bool force_cal, u
         self->clk_period = 1.0/(double)clk_freq;
         #if LOG >= LOG_INFO
         if (clk_freq > CLK_FREQ_MAX) {
-            printf("Clock frequency greated then recommended maximum of %i MHz.\n", CLK_FREQ_MAX);
+            printf("# Clock frequency greated then recommended maximum of %i MHz.\n", CLK_FREQ_MAX);
         } else if (clk_freq < CLK_FREQ_MIN) {
-            printf("Clock frequency less then recommended minimum of %i MHz.\n", CLK_FREQ_MIN);
+            printf("# Clock frequency less then recommended minimum of %i MHz.\n", CLK_FREQ_MIN);
         }
-        printf("Clock frequency set to %i Hz.\n", self->clk_freq);
+        printf("# Clock frequency set to %i Hz.\n", self->clk_freq);
         #endif
         cf1_state = 0; // The default after power-on or reset
         self->force_cal = force_cal;
         if (force_cal) {
             cf1_state |= _CF1_FORCE_CAL;
             #if LOG >= LOG_INFO
-            printf("Set forced calibration.\n");
+            printf("# Set forced calibration.\n");
             #endif
         }
         self->trigg_falling = trigg_edge_falling;
         if (trigg_edge_falling) {
             cf1_state |= _CF1_TRIGG_EDGE;
             #if LOG >= LOG_INFO
-            printf("Set TRIG1 to use falling edge.\n");
+            printf("# Set TRIG1 to use falling edge.\n");
             #endif
         }
         self->start_falling = start_edge_falling;
         if (start_edge_falling) {
             cf1_state |= _CF1_START_EDGE;
             #if LOG >= LOG_INFO
-            printf("Set START to trigger on falling edge.\n");
+            printf("# Set START to trigger on falling edge.\n");
             #endif
         }
         self->stop_falling = stop_edge_falling;
         if (stop_edge_falling) {
             cf1_state |= _CF1_STOP_EDGE;
             #if LOG >= LOG_INFO
-            printf("Set STOP to trigger on falling edge.\n");
+            printf("# Set STOP to trigger on falling edge.\n");
             #endif
         }
         self->meas_mode = meas_mode;
         if (self->meas_mode == 1) {
             cf1_state |= _CF1_MM1; // Does nothing since MM1 == 00.
             #if LOG >= LOG_INFO
-            printf("Set measurement mode 1.\n"); // default value
+            printf("# Set measurement mode 1.\n"); // default value
             #endif
         } else if (self->meas_mode == 2) {
             cf1_state |= _CF1_MM2;
             #if LOG >= LOG_INFO
-            printf("Set measurement mode 2.\n");
+            printf("# Set measurement mode 2.\n");
             #endif
         } else {
             cf1_state |= _CF1_MM1;
             self->meas_mode = 1;
             #if LOG >= LOG_INFO
-            printf("%i is not a legal measurement mode.\n", meas_mode);
-            printf("Defaulting to measurement mode 1.\n");
+            printf("# %i is not a legal measurement mode.\n", meas_mode);
+            printf("# Defaulting to measurement mode 1.\n");
             #endif
         }
         self->reg1[CONFIG1] = cf1_state;
@@ -265,7 +265,7 @@ void tdc7200_configure(tdc7200_obj_t *self, uint32_t clk_freq, bool force_cal, u
     
     uint8_t cf1_read = tdc7200_read8(self, CONFIG1);
     if ((cf1_read == 0) && (cf1_state != 0)) {
-        printf("Are you sure the TDC7200 is connected to the Pi's SPI interface?\n");
+        printf("# Are you sure the TDC7200 is connected to the Pi's SPI interface?\n");
         return;
     }
 
@@ -292,62 +292,62 @@ void tdc7200_configure(tdc7200_obj_t *self, uint32_t clk_freq, bool force_cal, u
             self->calibration_periods = 40;
         }
         #if LOG >= LOG_INFO
-        printf("Set %i-clock-period calibration.\n", self->calibration_periods);
+        printf("# Set %i-clock-period calibration.\n", self->calibration_periods);
         #endif
 
         if (avg_cycles <= 1) {
             cf2_state |= _CF2_AVG_CYC_1; // No effect since equals 0.
             self->avg_cycles = 1;
             #if LOG >= LOG_INFO
-            printf("No averaging.\n"); // default on reset
+            printf("# No averaging.\n"); // default on reset
             #endif
         } else if (avg_cycles <= 2) {
             cf2_state |= _CF2_AVG_CYC_2;
             self->avg_cycles = 2;
             #if LOG >= LOG_INFO
-            printf("Averaging over %i measurement cycles.\n", self->avg_cycles);
+            printf("# Averaging over %i measurement cycles.\n", self->avg_cycles);
             #endif
         } else if (avg_cycles <= 4) {
             cf2_state |= _CF2_AVG_CYC_4;
             self->avg_cycles = 4;
             #if LOG >= LOG_INFO
-            printf("Averaging over %i measurement cycles.\n", self->avg_cycles);
+            printf("# Averaging over %i measurement cycles.\n", self->avg_cycles);
             #endif
         } else if (avg_cycles <= 8) {
             cf2_state |= _CF2_AVG_CYC_8;                
             self->avg_cycles = 8;
             #if LOG >= LOG_INFO
-            printf("Averaging over %i measurement cycles.\n", self->avg_cycles);
+            printf("# Averaging over %i measurement cycles.\n", self->avg_cycles);
             #endif
         } else if (avg_cycles <= 16) {
             cf2_state |= _CF2_AVG_CYC_16;
             self->avg_cycles = 16;
             #if LOG >= LOG_INFO
-            printf("Averaging over %i measurement cycles.\n", self->avg_cycles);
+            printf("# Averaging over %i measurement cycles.\n", self->avg_cycles);
             #endif
         } else if (avg_cycles <= 32) {
             cf2_state |= _CF2_AVG_CYC_32;
             self->avg_cycles = 32;
             #if LOG >= LOG_INFO
-            printf("Averaging over %i measurement cycles.\n", self->avg_cycles);
+            printf("# Averaging over %i measurement cycles.\n", self->avg_cycles);
             #endif
         } else if (avg_cycles <= 64) {
             cf2_state |= _CF2_AVG_CYC_64;
             self->avg_cycles = 64;
             #if LOG >= LOG_INFO
-            printf("Averaging over %i measurement cycles.\n", self->avg_cycles);
+            printf("# Averaging over %i measurement cycles.\n", self->avg_cycles);
             #endif
         } else if (avg_cycles <= 128) {
             cf2_state |= _CF2_AVG_CYC_128;
             self->avg_cycles = 128;
             #if LOG >= LOG_INFO
-            printf("Averaging over %i measurement cycles.\n", self->avg_cycles);
+            printf("# Averaging over %i measurement cycles.\n", self->avg_cycles);
             #endif
         } else {
             cf2_state |= _CF2_AVG_CYC_1; // No effect since equals 0.
             self->avg_cycles = 1;
             #if LOG >= LOG_INFO
-            printf("%i is not a valid number of cycles to average over, defaulting to no averaging.\n", avg_cycles);        
+            printf("# %i is not a valid number of cycles to average over, defaulting to no averaging.\n", avg_cycles);        
             #endif
         }
 
@@ -373,11 +373,11 @@ void tdc7200_configure(tdc7200_obj_t *self, uint32_t clk_freq, bool force_cal, u
                 cf2_state |= _CF2_NSTOP_1;
                 self->num_stops = 1;
                 #if LOG >= LOG_INFO
-                printf("%i is not a valid number of stop pulses, defaulting to 1.\n", num_stops);
+                printf("# %i is not a valid number of stop pulses, defaulting to 1.\n", num_stops);
                 #endif
         }
         #if LOG >= LOG_INFO
-        printf("Set %i stop pulses.\n", self->num_stops);
+        printf("# Set %i stop pulses.\n", self->num_stops);
         #endif
     }
 
@@ -409,12 +409,12 @@ void tdc7200_configure(tdc7200_obj_t *self, uint32_t clk_freq, bool force_cal, u
         clock_cntr_stp = self->reg1[CLOCK_CNTR_STOP_MASK];
     } else {
         #if LOG >= LOG_INFO
-        printf("Skipping STOP pulses for %i clock periods = %f ns\n", clock_cntr_stp, 1E9 * clock_cntr_stp * self->clk_period);
+        printf("# Skipping STOP pulses for %i clock periods = %f ns\n", clock_cntr_stp, 1E9 * clock_cntr_stp * self->clk_period);
         #endif
         self->reg1[CLOCK_CNTR_STOP_MASK] = clock_cntr_stp & 0xFFFF;
         #if LOG >= LOG_INFO
         if (self->reg1[CLOCK_CNTR_STOP_MASK] != clock_cntr_stp) {
-            printf("clock_cntr_stop %i too large, using %i\n", clock_cntr_stp, self->reg1[CLOCK_CNTR_STOP_MASK]);
+            printf("# clock_cntr_stop %i too large, using %i\n", clock_cntr_stp, self->reg1[CLOCK_CNTR_STOP_MASK]);
         }
         #endif
         self->reg1[CLOCK_CNTR_STOP_MASK_H] = (clock_cntr_stp >> 8) & 0xFF;
@@ -430,10 +430,10 @@ void tdc7200_configure(tdc7200_obj_t *self, uint32_t clk_freq, bool force_cal, u
         clock_ovf = self->reg1[CLOCK_CNTR_OVF];
         if (meas_mode == 1) {
             tmout = (uint32_t)(0.055 * coarse_cntr_ovf);
-            printf("Setting overflow timeout from retained state (coarse counter overflow): %u = timeout %u ns.\n", coarse_ovf, tmout);
+            printf("# Setting overflow timeout from retained state (coarse counter overflow): %u = timeout %u ns.\n", coarse_ovf, tmout);
         } else {
             tmout = (uint32_t)(clock_ovf * (self->clk_period * 1.0E9));
-            printf("Setting overflow timeout from retained state (clock counter overflow): %u = timeout %u ns.\n", clock_ovf, tmout);
+            printf("# Setting overflow timeout from retained state (clock counter overflow): %u = timeout %u ns.\n", clock_ovf, tmout);
         }
         #if LOG >= LOG_INFO
         #endif
@@ -441,25 +441,25 @@ void tdc7200_configure(tdc7200_obj_t *self, uint32_t clk_freq, bool force_cal, u
         clock_ovf = clock_cntr_ovf;
         tmout = (uint32_t)(clock_ovf * (self->clk_period * 1.0E9));;
         #if LOG >= LOG_INFO
-        printf("Setting overflow timeout from clock_ovf: %u ~= timeout %u ns.\n", clock_ovf, tmout);
+        printf("# Setting overflow timeout from clock_ovf: %u ~= timeout %u ns.\n", clock_ovf, tmout);
         #endif
     } else if (timeout_ns == 0 && meas_mode == 1) {
         coarse_ovf = coarse_cntr_ovf;
         tmout = (uint32_t)(coarse_ovf * 0.055);
         #if LOG >= LOG_INFO
-        printf("Setting overflow timeout from coarse_ovf: %u ~= timeout %u ns.\n", coarse_ovf, tmout);
+        printf("# Setting overflow timeout from coarse_ovf: %u ~= timeout %u ns.\n", coarse_ovf, tmout);
         #endif
     } else {
         tmout = timeout_ns;
         if (meas_mode == 1) {
             coarse_ovf = (uint32_t)((double)timeout_ns / 0.055);
             #if LOG >= LOG_INFO
-            printf("Setting coarse overflow timeout from timeout: %u ~= timeout %u ns\n", coarse_ovf, timeout_ns);
+            printf("# Setting coarse overflow timeout from timeout: %u ~= timeout %u ns\n", coarse_ovf, timeout_ns);
             #endif
         } else {
             clock_ovf = (uint32_t)((double)timeout_ns / (self->clk_period*1.0E9));
             #if LOG >= LOG_INFO
-            printf("Setting clock overflow timeout from timeout: %u = ~timeout %u ns\n", clock_ovf, timeout_ns);
+            printf("# Setting clock overflow timeout from timeout: %u = ~timeout %u ns\n", clock_ovf, timeout_ns);
             #endif
         }            
     }
@@ -469,24 +469,24 @@ void tdc7200_configure(tdc7200_obj_t *self, uint32_t clk_freq, bool force_cal, u
 
     #if LOG >= LOG_INFO
     if ((meas_mode == 2) && (tmout < 500)) {
-        printf("WARNING: Timeout < 500 nS and meas_mode == 2.\n");
-        printf("Maybe measurement mode 1 would be better?\n");
+        printf("# WARNING: Timeout < 500 nS and meas_mode == 2.\n");
+        printf("# Maybe measurement mode 1 would be better?\n");
     } else if ((meas_mode == 1) && (tmout > 500)) {
-        printf("WARNING: Timeout > 500 nS and meas_mode == 1.\n");
-        printf("Maybe measurement mode 2 would be better?\n");
+        printf("# WARNING: Timeout > 500 nS and meas_mode == 1.\n");
+        printf("# Maybe measurement mode 2 would be better?\n");
     }
     #endif
 
     if (clock_ovf <= clock_cntr_stop) {
         clock_ovf = clock_cntr_stop + 1;
         #if LOG >= LOG_INFO
-        printf("WARNING: clock_cntr_ovf must be greater than clock_cntr_stop.\n");
-        printf("otherwise your measurement will stop before it starts.\n");
-        printf("Set clock_cntr_ovf to %x\n", clock_ovf);
+        printf("# WARNING: clock_cntr_ovf must be greater than clock_cntr_stop.\n");
+        printf("# otherwise your measurement will stop before it starts.\n");
+        printf("# Set clock_cntr_ovf to %x\n", clock_ovf);
         #endif
     }
     if (clock_ovf > 0xFFFF) {
-        printf("FATAL: clock_cntr_ovf exceeds max of 0xFFFF.\n");
+        printf("# FATAL: clock_cntr_ovf exceeds max of 0xFFFF.\n");
         exit(1);
     }
 
@@ -561,7 +561,7 @@ tdc7200_meas_t tdc7200_measure(tdc7200_obj_t *self) {
 
     if (trigg_state != trigg_falling) {
         #if LOG >= LOG_INFO
-        printf("ERROR 12: TRIGG should be %s. Reset the chip by repowering or reconfigure the device.\n", (trigg_falling ? "HIGH" : "LOW"));
+        printf("# ERROR 12: TRIGG should be %s. Reset the chip by repowering or reconfigure the device.\n", (trigg_falling ? "HIGH" : "LOW"));
         #endif
         tdc7200_reconfigure(self);
         result.error = 12;
@@ -577,7 +577,7 @@ tdc7200_meas_t tdc7200_measure(tdc7200_obj_t *self) {
     int e = _wait_for_edge(self->TRIGG, 0, (uint32_t)2e6);
     if (e == 2) {
         #if LOG >= LOG_INFO
-        printf("ERROR 10: Timed out waiting for TRIGG edge.\n");
+        printf("# ERROR 10: Timed out waiting for TRIGG edge.\n");
         #endif
         result.error = 10;
         return result;
@@ -585,18 +585,19 @@ tdc7200_meas_t tdc7200_measure(tdc7200_obj_t *self) {
     e = _wait_for_edge(self->INTB, 1, (uint32_t)2e6);
     if (e == 2) {
         #if LOG >= LOG_INFO
-        printf("ERROR 7: Timed out waiting for INTB edge.\n");
+        printf("# ERROR 7: Timed out waiting for INTB edge.\n");
         #endif
         result.error = 7;
         return result;
     }
 
     // Read everything in and see what we got.
-    if (self->meas_mode == 1) {
-        tdc7200_read_1stop_regs(self);
-    } else {
-        tdc7200_read_regs24(self);
-    }
+    // if (self->meas_mode == 1) {
+    //     tdc7200_read_1stop_regs(self);
+    // } else {
+    //     tdc7200_read_regs24(self);
+    // }
+    tdc7200_read_regs24(self);
     self->reg1[INT_STATUS] = tdc7200_read8(self, INT_STATUS);
     result.int_status = self->reg1[INT_STATUS];
     result.calibration[0] = self->reg1[CALIBRATION1];

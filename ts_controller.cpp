@@ -3,6 +3,7 @@
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "hardware/pio.h"
+#include "hardware/clocks.h"
 #include "SCPI_parser/Vrekrer_scpi_parser.h"
 
 extern "C" {
@@ -10,10 +11,13 @@ extern "C" {
 }
 
 #define LED 25
+#define OUT_XO_GPIO 21
 
 SCPI_Parser ts_instrument;
 
-uint32_t ref_freq_hz = 0;
+uint32_t ref_freq_hz = MHZ_12;
+uint32_t ref_per_ps = 1.0e12/MHZ_12;
+
 bool tic_enabled = false;
 char str[32];
 
@@ -52,43 +56,43 @@ void _ack(SCPI_I interface) {
 void scpi_errorhandler(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
   switch(ts_instrument.last_error) {
     case ts_instrument.ErrorCode::NoError:
-        printf("No Error\n");
+        printf("# No Error\n");
         break;
     case ts_instrument.ErrorCode::UnknownCommand:
-        printf("Unknown command received\n");
+        printf("# Unknown command received\n");
         break;        
     case ts_instrument.ErrorCode::Timeout:
-        printf("Communication timeout error\n");
+        printf("# Communication timeout error\n");
         break;
     case ts_instrument.ErrorCode::BufferOverflow: 
-        printf("Buffer overflow error\n");
+        printf("# Buffer overflow error\n");
         break;
     case ts_instrument.ErrorCode::CommandOverflow: 
-        printf("Buffer overflow error\n");
+        printf("# Buffer overflow error\n");
         break;
     case ts_instrument.ErrorCode::InvalidParameter:
-        printf("Invalid parameter value received\n");
+        printf("# Invalid parameter value received\n");
         break;        
     case ts_instrument.ErrorCode::MissingParameter:
-        printf("Missing parameter\n");
+        printf("# Missing parameter\n");
         break;
     case ts_instrument.ErrorCode::UnknownSource:
-        printf("Unknown source\n");
+        printf("# Unknown source\n");
         break;
     case ts_instrument.ErrorCode::InvalidMeasurementMode:
-        printf("Invalid TIC measurement mode (%s). Only 1 | 2 valid.\n", parameters[0]);
+        printf("# Invalid TIC measurement mode (%s). Only 1 | 2 valid.\n", parameters[0]);
         break;
     case ts_instrument.ErrorCode::InvalidCalPeriods:
-        printf("Invalid TIC calibration periods (%s). Only 2 | 10 | 20 | 40 valid.\n", parameters[0]);
+        printf("# Invalid TIC calibration periods (%s). Only 2 | 10 | 20 | 40 valid.\n", parameters[0]);
         break;
     case ts_instrument.ErrorCode::InvalidForceCalibration:
-        printf("Invalid TIC force calibration setting (%s). Only ON | OFF.\n", parameters[0]);
+        printf("# Invalid TIC force calibration setting (%s). Only ON | OFF.\n", parameters[0]);
         break;
     case ts_instrument.ErrorCode::InvalidNumberOfStops:
-        printf("Invalid number of TIC stops (%s). Only 1 | 2 | 3 | 4 | 5.\n", parameters[0]);
+        printf("# Invalid number of TIC stops (%s). Only 1 | 2 | 3 | 4 | 5.\n", parameters[0]);
         break;        
     case ts_instrument.ErrorCode::InvalidEdgeDef:
-        printf("Invalid edge definition (%s). Only RISING | FALLING | 0 | 1 allowed\n", parameters[1]);
+        printf("# Invalid edge definition (%s). Only RISING | FALLING | 0 | 1 allowed\n", parameters[1]);
         break;        
   }
   ts_instrument.last_error = ts_instrument.ErrorCode::NoError;    
@@ -209,39 +213,99 @@ void ref_source(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
 }
 #endif
 
+// void ref_source(SCPI_C commands, SCPI_P parameters, SCPI_I interface) { 
+//     gpio_put(LED, 1);
+//     if (parameters.Size() > 1) {
+//         uint32_t rfc = atoi(parameters[1]) * multiplier(parameters[1]);
+//         uint8_t clksrc = 0;
+//         if (strcmp(parameters[0], "INT") == 0) {
+//             clksrc = SOURCE_INTCLK;
+//             printf("# setting ref clock to Int @ %d\n", rfc);
+//             if (cm_set_refclock(SOURCE_INTCLK, rfc)) {
+//                 ref_freq_hz = rfc;
+//                 ref_per_ps = 1e9/(ref_freq_hz/1e3);
+//                 _ack(interface);
+//             }
+//         } else if (strcmp(parameters[0], "EXT") == 0) {
+//             printf("# setting ref clock to Ext @ %d\n", rfc);
+//             cm_set_refclock(SOURCE_EXTCLK, rfc);
+//             if (true) {
+//                 ref_freq_hz = rfc;
+//                 printf("ref_freq_hz set to %d\n", ref_freq_hz);
+//                 ref_per_ps = (uint32_t)(1.0e9/(ref_freq_hz/1.0e3));
+//                 printf("ref_per_ps set to %d\n", ref_per_ps);
+//                 _ack(interface);
+//             }
+//         } else if (strcmp(parameters[0], "XO") == 0) {
+//             printf("# setting ref clock to XO @ %d\n", MHZ_12);
+//             if (cm_set_refclock(SOURCE_XO, 0)) {
+//                 ref_freq_hz = MHZ_12;
+//                 ref_per_ps = 1e9/(ref_freq_hz/1e3);
+//                 _ack(interface);
+//             }
+//         } else {
+//             ts_instrument.last_error = ts_instrument.ErrorCode::UnknownSource;
+//             scpi_errorhandler(commands, parameters, interface);
+//         }
+//     } else if (parameters.Size() > 0) {
+//         if (strcmp(parameters[0], "XO") == 0) {
+//             printf("# setting ref clock to XO\n");
+//             cm_set_refclock(SOURCE_XO, 0);
+//             printf("retval is\n");
+//             if (true) {
+//                 ref_freq_hz = MHZ_12;
+//                 printf("ref_freq_hz set to %d\n", ref_freq_hz);
+//                 ref_per_ps = (uint32_t)(1.0e9/(ref_freq_hz/1.0e3));
+//                 printf("ref_per_ps set to %d\n", ref_per_ps);
+//                 _ack(interface);
+//             }
+//         } else {
+//             ts_instrument.last_error = ts_instrument.ErrorCode::MissingParameter;
+//             scpi_errorhandler(commands, parameters, interface);
+//         }        
+//     } else {
+//         ts_instrument.last_error = ts_instrument.ErrorCode::MissingParameter;
+//         scpi_errorhandler(commands, parameters, interface);        
+//     }
+//     printf("Done ref_source");
+//     gpio_put(LED, 0);
+// }
+
 void ref_source(SCPI_C commands, SCPI_P parameters, SCPI_I interface) { 
     gpio_put(LED, 1);
+    uint8_t clksrc = 254;
+    uint32_t rfc = 0;
     if (parameters.Size() > 1) {
-        ref_freq_hz = atoi(parameters[1]) * multiplier(parameters[1]);
+        rfc = atoi(parameters[1]) * multiplier(parameters[1]);
         if (strcmp(parameters[0], "INT") == 0) {
-            printf("setting ref clock to Int @ %d\n", ref_freq_hz);
-            if (cm_set_refclock(SOURCE_INTCLK, ref_freq_hz))
-                _ack(interface);
+            clksrc = SOURCE_INTCLK;
         } else if (strcmp(parameters[0], "EXT") == 0) {
-            printf("setting ref clock to Ext @ %d\n", ref_freq_hz);
-            if (cm_set_refclock(SOURCE_EXTCLK, ref_freq_hz))
-                _ack(interface);
+            clksrc = SOURCE_EXTCLK;
         } else if (strcmp(parameters[0], "XO") == 0) {
-            printf("setting ref clock to XO @ %d\n", ref_freq_hz);
-            if (cm_set_refclock(SOURCE_XO, 0)) 
-                _ack(interface);
-        } else {
-            ts_instrument.last_error = ts_instrument.ErrorCode::UnknownSource;
-            scpi_errorhandler(commands, parameters, interface);
+            clksrc = SOURCE_XO;
+            rfc = MHZ_12;
         }
     } else if (parameters.Size() > 0) {
         if (strcmp(parameters[0], "XO") == 0) {
-            printf("setting ref clock to XO\n", 0);
-            if (cm_set_refclock(SOURCE_XO, 0))
-                _ack(interface);
-        } else {
-            ts_instrument.last_error = ts_instrument.ErrorCode::MissingParameter;
-            scpi_errorhandler(commands, parameters, interface);
-        }        
+            clksrc = SOURCE_XO;
+            rfc = MHZ_12;
+        }
     } else {
         ts_instrument.last_error = ts_instrument.ErrorCode::MissingParameter;
-        scpi_errorhandler(commands, parameters, interface);        
+        scpi_errorhandler(commands, parameters, interface);
     }
+    
+    if (clksrc == 254) {
+        ts_instrument.last_error = ts_instrument.ErrorCode::UnknownSource;
+        scpi_errorhandler(commands, parameters, interface);
+    } else {
+        printf("# setting ref clock to %d @ %d\n", clksrc, rfc);
+        cm_set_refclock(clksrc, rfc);
+        ref_freq_hz = rfc;
+        ref_per_ps = (uint32_t)(1.0e9/(ref_freq_hz/1.0e3));
+        _ack(interface);
+    }
+//    printf("Done ref_source");
     gpio_put(LED, 0);
 }
 
@@ -379,9 +443,11 @@ void _serialize_command(char* str, SCPI_C commands, SCPI_P parameters) {
     sprintf(str, "");
     for (uint8_t i = 0; i < commands.Size(); i++)
         sprintf(str, "%s:%s", str, commands[i]);
-    
-    for (uint8_t i = 0; i < parameters.Size(); i++)
-        sprintf(str, "%s %s", str, parameters[i]);
+
+    if (parameters.Size() > 0)
+        sprintf(str, "%s %s", str, parameters[0]);
+    for (uint8_t i = 1; i < parameters.Size(); i++)
+        sprintf(str, "%s,%s", str, parameters[i]);
     sprintf(str, "%s\n", str);
 }
 
@@ -389,6 +455,7 @@ void cm_fwd_w(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
     #ifdef COUNTER_MODULE_V2_H_
     _serialize_command(str, commands, parameters);
     cm_forward_and_read(str, str);
+    sprintf(str, "%s\n", str);
     interface.putchars(str);
     #endif
 }
@@ -405,8 +472,8 @@ void initialize_scpi() {
         ts_instrument.RegisterCommand(":STOP", &cm_fwd_w);
         ts_instrument.RegisterCommand(":STARt", &cm_fwd_w);
         ts_instrument.RegisterCommand(":NSTOps", &tic_set_nstops);
-        ts_instrument.RegisterCommand(":IMPedance", &cm_fwd_w);      // param <50 | 0> | <1M | 1>
-        ts_instrument.RegisterCommand(":EDGe", &tic_set_edge);      // params <CH1 | CH2> | <<RISING | 1> | <FALLING | 0>>
+        ts_instrument.RegisterCommand(":IMPedance", &cm_fwd_w);      // param <CH1 | CH2>, <LOW | 50 | 0> | <HIGH | 1M | 1>
+        ts_instrument.RegisterCommand(":EDGE", &tic_set_edge);      // params <START | STOP> | <<RISING | 1> | <FALLING | 0>>
         ts_instrument.RegisterCommand(":PET?", &read_pet);      // params <CH1 | CH2> | <<RISING | 1> | <FALLING | 0>>
         ts_instrument.RegisterCommand(":PET:ENABle", &tic_pet_enable);      // params <CH1 | CH2> | <<RISING | 1> | <FALLING | 0>>
     ts_instrument.SetCommandTreeBase(":DIVider");
@@ -426,11 +493,11 @@ void initialize_scpi() {
 
 void core1_main() {
     uint32_t tm = time_us_32();
-    bool on = false;
+    uint8_t on = 1;
     while(true) {
         ts_instrument.ProcessInput(SCPI_Interface(), "\n");
-        if ((time_us_32() - tm) > 50000) {
-            on != on;
+        if ((time_us_32() - tm) > 500000) {
+            on = (on+1)%2;
             gpio_put(LED, on);
             tm = time_us_32();
         }
@@ -438,13 +505,15 @@ void core1_main() {
 }
 
 int main() {
+    clock_gpio_init(OUT_XO_GPIO, CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, 1);
+
     stdio_init_all();
     sleep_ms(2000);
     gpio_init(LED);
     gpio_set_dir(LED, GPIO_OUT);
     gpio_put(LED, 1);
 
-    printf("Awaiting messages in 1s...\n");
+    printf("# Awaiting messages in 1s...\n");
     cm_initialize();
     initialize_scpi();
     multicore_launch_core1(core1_main);
@@ -471,11 +540,11 @@ int main() {
                     printf("Error configuring mode 3 measurement (enabling trig)\n");
 */                cm_forward_and_read("TIC:STOP REF\n", str);
                 if (strcmp(str, "OK") != 0)
-                    printf("Error configuring mode 3 measurement (settig stop signal)\n");
+                    printf("# Error configuring mode 3 measurement (settig stop signal)\n");
                 if (!cm_tic_pet_enable(true))
-                    printf("Error configuring mode 3 measurement (PET initialization)\n");
-                if (!cm_tic_set_nstops(1))
-                    printf("Error configuring mode 3 measurement (number of stops)\n");
+                    printf("# Error configuring mode 3 measurement (PET initialization)\n");
+//                if (!cm_tic_set_nstops(1))
+//                    printf("Error configuring mode 3 measurement (number of stops)\n");
             } else if (cm_get_meas_mode() != 3 & cm_tic_pet_enabled()) {
                 cm_tic_pet_enable(false);
                 cm_forward_and_read("DIV:TRIG:ENAB 0\n", str);
@@ -483,29 +552,29 @@ int main() {
             msmt = cm_tic_measure();
             gpio_put(LED, 1);
             if (msmt.error == 0) {
-                for (int i = 0; i < msmt.num_stops; i++) {
-                    printf("%0.3f\t", msmt.tof[i]*1.0e9);
+                if (cm_get_meas_mode() == 3) {
+                    uint8_t num_stops = (msmt.num_stops > 2) ? 2 : msmt.num_stops;
+                    double meas = msmt.tof[0] - msmt.tof[0+2] + (double)msmt.clock_count[0] * 2.0e-3 * (double)ref_per_ps;
+                    printf("# %0.3f\t%0.3f\t%0.3f\t%d\t%0.3f\t%0.3f\n", 
+                        meas,
+                        msmt.tof[0]*1.0e9, msmt.tof[1]*1.0e9, msmt.clock_count[0], 
+                        msmt.tof[2]*1.0e9, msmt.tof[3]*1.0e9);
+                    if (msmt.num_stops > 1) {
+                        printf("%0.3f\t", meas);
+                        meas = msmt.tof[1] - msmt.tof[3] + (double)msmt.clock_count[0] * 2.0e-3 * (double)ref_per_ps;
+                        printf("%0.3f\n", meas);
+                    } else {
+                        printf("%0.3f\n", meas);
+                    }
+                } else {
+                    for (int i = 0; i < msmt.num_stops; i++) {
+                        printf("%0.3f\t", msmt.tof[i]*1.0e9);
+                    }
+                    printf("\n");
                 }
-                printf("\n");
             } else {
-                printf("error: %i, num_stops: %i, normLSB: %e\n", msmt.error, msmt.num_stops, msmt.normLSB);
+                printf("# error: %d, num_stops: %i, normLSB: %e\n", msmt.error, msmt.num_stops, msmt.normLSB);
             }
-/*
-            if (j == DATA_BUF) {
-                gpio_put(LED, 0);
-                for (int i = 0; i < DATA_BUF; i++) {
-                    printf("%0.3f\n", data[i]*1e9);
-                }
-                j = 0;
-                gpio_put(LED, 1);
-            } 
-            msmt = cm_tic_measure();
-            if (msmt.error == 0) {
-                data[j] = msmt.tof[0];
-                j++;
-            } else {
-                printf("error: %i, num_stops: %i, normLSB: %e\n", msmt.error, msmt.num_stops, msmt.normLSB);
-            } */
         }
     }
 }

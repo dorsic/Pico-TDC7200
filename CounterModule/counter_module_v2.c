@@ -13,12 +13,13 @@
 #endif
 
 tdc7200_obj_t tdc;
-bool _tdc_need_reconfigure = false;
+uint8_t _tdc_need_reconfigure = 0;
 
 uint8_t _cm_meas_mode = 0;
-bool _cm_tic_pet_enabled = false;
-uint32_t _freq_hz = MHZ_12;
+uint8_t _cm_tic_pet_enabled = 0;
 char buf[32];
+char start_ch[6];
+char stop_ch[6];
 
 #ifdef PDIVCOM_UART
 
@@ -27,6 +28,7 @@ uint16_t cm_uart_readline(char *buf) {
     uint16_t n = 0;
     char c = uart_rx_program_getc(UART_PIO, UART_RX_SM);
     while ((c != '\n') && ((time_us_32()-st) < UART_TIMEOUT_US)) {
+//    while (((time_us_32()-st) < UART_TIMEOUT_US)) {
         if (c != '\0') {
             buf[n]=c;
 //            printf("%c", c);
@@ -38,26 +40,26 @@ uint16_t cm_uart_readline(char *buf) {
     buf[n] = '\0';
 //    printf("\n");
     if (c != '\n') 
-        printf("uart timeout\n");
+        printf("# UART timeout (%s)\n", buf);
     return n;
 }
 
 void cm_uart_write(const char* message) {
 //    printf("%s", message);
-    pio_sm_set_enabled(UART_PIO, UART_TX_SM, false);
+    pio_sm_set_enabled(UART_PIO, UART_TX_SM, 0);
     pio_sm_restart(UART_PIO, UART_TX_SM);
-    pio_sm_set_enabled(UART_PIO, UART_TX_SM, true);
+    pio_sm_set_enabled(UART_PIO, UART_TX_SM, 1);
     uart_tx_program_puts(UART_PIO, UART_TX_SM, message);
 }
 
 uint16_t cm_uart_writereadline(const char* message, char* buf) {
-    pio_sm_set_enabled(UART_PIO, UART_TX_SM, false);
+    pio_sm_set_enabled(UART_PIO, UART_TX_SM, 0);
     pio_sm_restart(UART_PIO, UART_TX_SM);
-    pio_sm_set_enabled(UART_PIO, UART_TX_SM, true);
+    pio_sm_set_enabled(UART_PIO, UART_TX_SM, 1);
     pio_sm_clear_fifos(UART_PIO, UART_RX_SM);
-    pio_sm_set_enabled(UART_PIO, UART_RX_SM, false);
+    pio_sm_set_enabled(UART_PIO, UART_RX_SM, 0);
     pio_sm_restart(UART_PIO, UART_RX_SM);
-    pio_sm_set_enabled(UART_PIO, UART_RX_SM, true);
+    pio_sm_set_enabled(UART_PIO, UART_RX_SM, 1);
     uart_tx_program_puts(UART_PIO, UART_TX_SM, message);
     return cm_uart_readline(buf);
 }
@@ -69,7 +71,7 @@ void cm_initialize_uart() {
     uart_rx_program_init(UART_PIO, UART_RX_SM, offset, PDIVRX_PIN, 9600);
 
     if (0 == cm_uart_writereadline("*IDN?", buf)) {
-        printf("WARNING: Cannot communicate with Pico divider.\n");
+        printf("# WARNING: Cannot communicate with Pico divider.\n");
     }
 }
 #endif
@@ -152,15 +154,15 @@ void cm_initialize() {
 
 
     // init TDC
-    printf("Configuring TDC7200 for measurements...\n");
-    tdc = tdc7200_create(spi1, SCLK_PIN, CSB_PIN, DIN_PIN, DOUT_PIN, INTB_PIN, TRIGG_PIN, MHZ_10);
+    printf("# Configuring TDC7200 for measurements...\n");
+    tdc = tdc7200_create(spi1, SCLK_PIN, CSB_PIN, DIN_PIN, DOUT_PIN, INTB_PIN, TRIGG_PIN, MHZ_12);
 
-    tdc7200_configure(&tdc, MHZ_10, 
-        true,   // force_cal
+    tdc7200_configure(&tdc, MHZ_12, 
+        1,   // force_cal
         1,      // meas_mode
-        true,   // trigg_edge_falling;  set to true if you see on the osciloscope LOW on initialising measurement rising edge on start pulse and falling edge on initialising second measurement
-        false,  // start_edge_falling
-        false,  // stop_edge_falling
+        1,   // trigg_edge_falling;  set to 1 if you see on the osciloscope LOW on initialising measurement rising edge on start pulse and falling edge on initialising second measurement
+        0,  // start_edge_falling
+        0,  // stop_edge_falling
         10,     // calibration_periods
         1,      // avg_cycles
         1,      // num_stops
@@ -168,12 +170,12 @@ void cm_initialize() {
         0,      // coarse_cnt_ovf
         0,      // clock_cntr_ovf 
         (uint32_t)MODE1_TIMEOUT_NS, // timeout_ns
-        false   // retain_state
+        0   // retain_state
     );
 
     uint offset = pio_add_program(GATE_PIO, &tic_gate_program);
     tic_gate_program_init(GATE_PIO, GATE_SM, offset, GATE_PIN);
-    pio_sm_set_enabled(GATE_PIO, GATE_SM, true);
+    pio_sm_set_enabled(GATE_PIO, GATE_SM, 1);
 
 }
 
@@ -182,31 +184,34 @@ void cm_initialize() {
 // TDC7200
 
 // valid source INTCLK | EXTCLK | XO
-bool cm_set_refclock(uint8_t source, uint32_t freq_hz) {
+uint8_t cm_set_refclock(uint8_t source, uint32_t freq_hz) {
     if (source != SOURCE_INTCLK && source != SOURCE_EXTCLK && source != SOURCE_XO) {
-        printf("Invalid ref clock source for Counter Module. (%u).", source);
-        return false;
+        printf("# Invalid ref clock source for Counter Module. (%u).", source);
+        return 0;
     }
     char msg[32];
     if (source == SOURCE_XO) {
-        gpio_put(SWCLKSEL1_PIN, true);
-        gpio_put(SWCLKSEL2_PIN, false);
+        gpio_put(SWCLKSEL1_PIN, 1);
+        gpio_put(SWCLKSEL2_PIN, 0);
         sprintf(msg, ":DIV:REF XO\n");
+        printf(msg);
     }
     if (source == SOURCE_EXTCLK) {
-        gpio_put(SWCLKSEL1_PIN, true);
-        gpio_put(SWCLKSEL2_PIN, true);
+        gpio_put(SWCLKSEL1_PIN, 1);
+        gpio_put(SWCLKSEL2_PIN, 1);
         sprintf(msg, ":DIV:REF EXT,%d\n", freq_hz);
     }
     if (source == SOURCE_INTCLK) {
-        gpio_put(SWCLKSEL1_PIN, false);
-        gpio_put(SWCLKSEL2_PIN, true);
+        gpio_put(SWCLKSEL1_PIN, 0);
+        gpio_put(SWCLKSEL2_PIN, 1);
         sprintf(msg, ":DIV:REF INT,%d\n", freq_hz);
     }
     cm_forward_and_read(msg, msg);
-    bool ret = strcmp(msg, "OK") == 0;
+//    printf(msg);
+    uint8_t ret = strcmp(msg, "OK") == 0;
     if (ret)
-        _freq_hz = (source != SOURCE_XO)? freq_hz: MHZ_12;
+        tdc.clk_freq = (source != SOURCE_XO)? freq_hz: MHZ_12;
+        _tdc_need_reconfigure = 1;
     return ret;
 }
 
@@ -225,18 +230,20 @@ uint32_t cm_get_pet() {
 tdc7200_meas_t cm_tic_measure() {
     if (_tdc_need_reconfigure) {
         tdc7200_reconfigure(&tdc);
-        _tdc_need_reconfigure = false;
+        _tdc_need_reconfigure = 0;
     }
-    if (_cm_meas_mode == 3 && _cm_tic_pet_enabled) {        
-        cm_forward_and_read(":TIC:STAR CH1\n", buf);
+    if (_cm_meas_mode == 3 && _cm_tic_pet_enabled) {
+        sprintf(buf, ":TIC:STAR %s\n", start_ch);
+        cm_forward_and_read(buf, buf);
 //        cm_forward_and_read(":TIC:STOP REF\n", buf);
         tdc7200_meas_t r1 = tdc7200_measure(&tdc);
-        cm_forward_and_read(":TIC:STAR CH2\n", buf);
+        sprintf(buf, ":TIC:STAR %s\n", stop_ch);
+        cm_forward_and_read(buf, buf);
         tdc7200_meas_t r2 = tdc7200_measure(&tdc);        
         uint32_t clk = cm_get_pet();
-//        printf("r1.t1=%.3f r1.t2=%.3f clk=%d r2.t1=%.3f r2.t2=%.3f \n", r1.tof[0]*1.0e9, r1.tof[1]*1.0e9, clk, r2.tof[0]*1.0e9, r2.tof[1]*1.0e9);
 //        printf("r1.t1=%.3f clk=%d r2.t1=%.3f \n", r1.tof[0]*1.0e9, clk, r2.tof[0]*1.0e9);
-        r1.tof[0] = r1.tof[0] - r2.tof[0] + (double)clk/(double)_freq_hz*2.0;
+        r1.tof[2] = r2.tof[0];
+        r1.tof[3] = r2.tof[1];
         r1.clock_count[0] = clk;
         return r1;
     } else {
@@ -244,83 +251,100 @@ tdc7200_meas_t cm_tic_measure() {
     }
 }
 
-bool cm_tic_set_meas_mode(uint8_t measurement_mode) {
+uint8_t cm_tic_set_meas_mode(uint8_t measurement_mode) {
     if ((measurement_mode-1) > 2) {
         #ifdef DEBUG
             printf("Invalid measurement mode (%d).\n", measurement_mode);
         #endif
-        return false;
+        return 0;
+    }
+    if (tdc.meas_mode == 3) {
+        // reconfigure back the start and stop signal channels
+        sprintf(buf, ":TIC:STAR %s\n", start_ch);
+        cm_forward_and_read(buf, buf);
+        sprintf(buf, ":TIC:STOP %s\n", stop_ch);
+        cm_forward_and_read(buf, buf);        
     }
     _cm_meas_mode = measurement_mode;
     tdc.meas_mode = measurement_mode % 2;
     tdc.timeout = measurement_mode==1? MODE1_TIMEOUT_NS : MODE2_TIMEOUT_NS;
     tdc.clock_cntr_ovf = 0;
     tdc.coarse_cntr_ovf = 0;
-    _tdc_need_reconfigure = true;
-    return true;
+    if (measurement_mode == 3) {
+        // remember the start and stop configuration
+        cm_forward_and_read(":TIC:STAR?\n", buf);
+        strcpy(start_ch, buf);
+        printf("# Stored START channel %s\n", start_ch);
+        cm_forward_and_read(":TIC:STOP?\n", buf);
+        strcpy(stop_ch, buf);
+        printf("# Stored STOP channel %s\n", stop_ch);
+        cm_forward_and_read(":TIC:STOP REF\n", buf);
+    }
+    _tdc_need_reconfigure = 1;
+    return 1;
 }
 
-bool cm_tic_set_calperiods(uint8_t periods) {
+uint8_t cm_tic_set_calperiods(uint8_t periods) {
     if (periods == 2 || periods == 10 || periods == 20 || periods == 40) {
         tdc.calibration_periods = periods;
-        _tdc_need_reconfigure = true;
+        _tdc_need_reconfigure = 1;
     } else {
         #ifdef DEBUG
             printf("Invalid calibration periods (%d).\n", periods);
         #endif
-        return false;
+        return 0;
     }
-    return true;
+    return 1;
 }
 
-bool cm_tic_set_force_calibration(bool force) {
+uint8_t cm_tic_set_force_calibration(uint8_t force) {
     tdc.force_cal = force;
-    _tdc_need_reconfigure = true;
-    return true;
+    _tdc_need_reconfigure = 1;
+    return 1;
 }
 
-bool cm_tic_set_nstops(uint8_t nstops) {
+uint8_t cm_tic_set_nstops(uint8_t nstops) {
     if ((nstops > 0) && (nstops < 6)) {
         tdc.num_stops = nstops;
-        _tdc_need_reconfigure = true;
-        return true;
+        _tdc_need_reconfigure = 1;
+        return 1;
     }
     #ifdef DEBUG
         printf("Invalid number of stops (%d).\n", nstops);
     #endif
-    return false;
+    return 0;
 }
 
-bool cm_tic_set_edge(uint8_t channel, bool falling) {
+uint8_t cm_tic_set_edge(uint8_t channel, uint8_t falling) {
     if (channel == SOURCE_START) {
         tdc.start_falling = falling;
-        _tdc_need_reconfigure = true;
+        _tdc_need_reconfigure = 1;
     } else if (channel != SOURCE_STOP) {
         tdc.stop_falling = falling;
-        _tdc_need_reconfigure = true;
+        _tdc_need_reconfigure = 1;
     } else {
         #ifdef DEBUG
         #endif
-        return false;
+        return 0;
     }
-    return true;
+    return 1;
 }
 
-bool cm_tic_pet_enable(bool on) {
+uint8_t cm_tic_pet_enable(uint8_t on) {
     char ret[4];
     if (on) {
-        _cm_tic_pet_enabled = true;
+        _cm_tic_pet_enabled = 1;
         cm_forward_and_read(":TIC:PET:ENAB 1\n", ret);
-        pio_sm_set_enabled(GATE_PIO, GATE_SM, true);
+        pio_sm_set_enabled(GATE_PIO, GATE_SM, 1);
     } else {
-        _cm_tic_pet_enabled = false;
+        _cm_tic_pet_enabled = 0;
         cm_forward_and_read(":TIC:PET:ENAB 0\n", ret);
-        pio_sm_set_enabled(GATE_PIO, GATE_SM, false);
+        pio_sm_set_enabled(GATE_PIO, GATE_SM, 0);
     }
     return strcmp(ret, "OK") == 0;
 }
 
-bool cm_tic_pet_enabled() {
+uint8_t cm_tic_pet_enabled() {
     return _cm_tic_pet_enabled;
 }
 
