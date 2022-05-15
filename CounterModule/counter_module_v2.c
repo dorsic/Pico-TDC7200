@@ -15,11 +15,16 @@
 tdc7200_obj_t tdc;
 uint8_t _tdc_need_reconfigure = 0;
 
-uint8_t _cm_meas_mode = 0;
+uint8_t _cm_tic_mode = 0;
 uint8_t _cm_tic_pet_enabled = 0;
-char buf[32];
-char start_ch[6];
-char stop_ch[6];
+uint8_t _cm_fnc = FNC_TI;
+double _cm_freq_last_tof = 0.0;
+double _cm_freq_gateFreq = 10.0;     // default gate time of 0.1s
+double _cm_freq_nominalFreq = 10.0e6;   // deault nominal frequency of 10 MHz  
+
+char _buf[32];
+char cm_start_ch[6] = {'C', 'H', '1', '\0', '\0', '\0'};
+char cm_stop_ch[6] = {'C', 'H', '2', '\0', '\0', '\0'};
 
 #ifdef PDIVCOM_UART
 
@@ -61,7 +66,14 @@ uint16_t cm_uart_writereadline(const char* message, char* buf) {
     pio_sm_restart(UART_PIO, UART_RX_SM);
     pio_sm_set_enabled(UART_PIO, UART_RX_SM, 1);
     uart_tx_program_puts(UART_PIO, UART_TX_SM, message);
-    return cm_uart_readline(buf);
+    buf[0] = '#';
+    uint16_t cnt = 0;
+    while (buf[0] == '#') {
+        cnt = cm_uart_readline(buf);
+        if (buf[0] == '#')
+            printf(buf, '\n');
+    }
+    return cnt;
 }
 
 void cm_initialize_uart() {
@@ -70,7 +82,7 @@ void cm_initialize_uart() {
     offset = pio_add_program(UART_PIO, &uart_rx_program);
     uart_rx_program_init(UART_PIO, UART_RX_SM, offset, PDIVRX_PIN, 9600);
 
-    if (0 == cm_uart_writereadline("*IDN?", buf)) {
+    if (0 == cm_uart_writereadline("*IDN?", _buf)) {
         printf("# WARNING: Cannot communicate with Pico divider.\n");
     }
 }
@@ -133,6 +145,10 @@ void cm_initialize_com() {
 void cm_initialize() {
     // init GPIOs
 
+    gpio_init(PDIVRST_PIN);
+    gpio_set_dir(PDIVRST_PIN, GPIO_OUT);
+    gpio_put(PDIVRST_PIN, 1);
+
     // init PicoDIV SPI communication
     cm_initialize_com();
 
@@ -194,7 +210,6 @@ uint8_t cm_set_refclock(uint8_t source, uint32_t freq_hz) {
         gpio_put(SWCLKSEL1_PIN, 1);
         gpio_put(SWCLKSEL2_PIN, 0);
         sprintf(msg, ":DIV:REF XO\n");
-        printf(msg);
     }
     if (source == SOURCE_EXTCLK) {
         gpio_put(SWCLKSEL1_PIN, 1);
@@ -215,32 +230,72 @@ uint8_t cm_set_refclock(uint8_t source, uint32_t freq_hz) {
     return ret;
 }
 
-uint32_t cm_get_pet() {
+uint32_t cm_tic_get_pet() {
     uint16_t n;
-    n = cm_forward_and_read(":TIC:PET?\n", buf);
+    n = cm_forward_and_read(":TIC:PET?\n", _buf);
 //    printf("Read %d chars (%s)\n", n, buf);
     if (n>0) {
-        return atoi(buf);
+        return atoi(_buf);
     } else {
         return -1;
     }    
 }
 
+void cm_freq_set_gatefreq(double freq) {
+    _cm_freq_gateFreq = freq;
+}
+
+double cm_freq_get_gatefreq() {
+    return _cm_freq_gateFreq;
+}
+
+void cm_freq_set_nominalfreq(double freq) {
+    _cm_freq_nominalFreq = freq;
+}
+
+double cm_freq_get_nominalfreq() {
+    return _cm_freq_nominalFreq;
+}
+
+uint8_t cm_set_fnc(uint8_t fnc_to_measure) {
+    _cm_fnc = fnc_to_measure;
+    // ToDo handle opened measurement
+    return 1;
+}
+
+uint8_t cm_get_fnc() {
+    return _cm_fnc;
+}
+
+double cm_freq_measure() {
+    tdc7200_meas_t m;
+
+    if (_cm_freq_last_tof == 0.0) {
+        m = cm_tic_measure();
+        _cm_freq_last_tof = m.tof[0];
+    }
+    m = cm_tic_measure();
+//    printf("# dtof: %0.3f ns, %0.3f, %0.3f, %0.1f, %0.1f \n", (m.tof[0]-_cm_freq_last_tof)*1e9, m.tof[0]*1e9, _cm_freq_last_tof*1e9, _cm_freq_gateFreq, _cm_freq_nominalFreq);    
+    double dtof = m.tof[0] - _cm_freq_last_tof;
+    double f = _cm_freq_nominalFreq * (1.0 / (1.0 + _cm_freq_gateFreq*dtof));
+    _cm_freq_last_tof = m.tof[0];
+    return f;
+}
 
 tdc7200_meas_t cm_tic_measure() {
     if (_tdc_need_reconfigure) {
         tdc7200_reconfigure(&tdc);
         _tdc_need_reconfigure = 0;
     }
-    if (_cm_meas_mode == 3 && _cm_tic_pet_enabled) {
-        sprintf(buf, ":TIC:STAR %s\n", start_ch);
-        cm_forward_and_read(buf, buf);
-//        cm_forward_and_read(":TIC:STOP REF\n", buf);
+    if (_cm_tic_mode == 3 && _cm_tic_pet_enabled) {
+        sprintf(_buf, ":TIC:STAR %s\n", cm_start_ch);
+        cm_forward_and_read(_buf, _buf);
+//        cm_forward_and_read(":TIC:STOP REF\n", _buf);
         tdc7200_meas_t r1 = tdc7200_measure(&tdc);
-        sprintf(buf, ":TIC:STAR %s\n", stop_ch);
-        cm_forward_and_read(buf, buf);
+        sprintf(_buf, ":TIC:STAR %s\n", cm_stop_ch);
+        cm_forward_and_read(_buf, _buf);
         tdc7200_meas_t r2 = tdc7200_measure(&tdc);        
-        uint32_t clk = cm_get_pet();
+        uint32_t clk = cm_tic_get_pet();
 //        printf("r1.t1=%.3f clk=%d r2.t1=%.3f \n", r1.tof[0]*1.0e9, clk, r2.tof[0]*1.0e9);
         r1.tof[2] = r2.tof[0];
         r1.tof[3] = r2.tof[1];
@@ -251,7 +306,29 @@ tdc7200_meas_t cm_tic_measure() {
     }
 }
 
-uint8_t cm_tic_set_meas_mode(uint8_t measurement_mode) {
+void cm_tic_read_channel(uint8_t source) {
+    switch (source) {
+        case SOURCE_START:
+            cm_forward_and_read(":TIC:STAR?\n", cm_start_ch);
+            break;
+        case SOURCE_STOP:
+            cm_forward_and_read(":TIC:STOP?\n", cm_stop_ch);
+            break;
+    }
+}
+
+void cm_tic_get_channel(char* buf, uint8_t source) {
+    switch (source) {
+        case SOURCE_START:
+            strcpy(buf, cm_start_ch);
+            break;
+        case SOURCE_STOP:
+            strcpy(buf, cm_stop_ch);
+            break;
+    }
+}
+
+uint8_t cm_tic_set_mode(uint8_t measurement_mode) {
     if ((measurement_mode-1) > 2) {
         #ifdef DEBUG
             printf("Invalid measurement mode (%d).\n", measurement_mode);
@@ -260,25 +337,23 @@ uint8_t cm_tic_set_meas_mode(uint8_t measurement_mode) {
     }
     if (tdc.meas_mode == 3) {
         // reconfigure back the start and stop signal channels
-        sprintf(buf, ":TIC:STAR %s\n", start_ch);
-        cm_forward_and_read(buf, buf);
-        sprintf(buf, ":TIC:STOP %s\n", stop_ch);
-        cm_forward_and_read(buf, buf);        
+        sprintf(_buf, ":TIC:STAR %s\n", cm_start_ch);
+        cm_forward_and_read(_buf, _buf);
+        sprintf(_buf, ":TIC:STOP %s\n", cm_stop_ch);
+        cm_forward_and_read(_buf, _buf);        
     }
-    _cm_meas_mode = measurement_mode;
-    tdc.meas_mode = measurement_mode % 2;
+    _cm_tic_mode = measurement_mode;
+    tdc.meas_mode = ((measurement_mode+1) % 2) + 1;
     tdc.timeout = measurement_mode==1? MODE1_TIMEOUT_NS : MODE2_TIMEOUT_NS;
     tdc.clock_cntr_ovf = 0;
     tdc.coarse_cntr_ovf = 0;
     if (measurement_mode == 3) {
         // remember the start and stop configuration
-        cm_forward_and_read(":TIC:STAR?\n", buf);
-        strcpy(start_ch, buf);
-        printf("# Stored START channel %s\n", start_ch);
-        cm_forward_and_read(":TIC:STOP?\n", buf);
-        strcpy(stop_ch, buf);
-        printf("# Stored STOP channel %s\n", stop_ch);
-        cm_forward_and_read(":TIC:STOP REF\n", buf);
+        cm_tic_read_channel(SOURCE_START);
+        printf("# Stored START channel %s\n", cm_start_ch);
+        cm_tic_read_channel(SOURCE_STOP);
+        printf("# Stored STOP channel %s\n", cm_stop_ch);
+        cm_forward_and_read(":TIC:STOP REF\n", _buf);
     }
     _tdc_need_reconfigure = 1;
     return 1;
@@ -348,6 +423,12 @@ uint8_t cm_tic_pet_enabled() {
     return _cm_tic_pet_enabled;
 }
 
-uint8_t cm_get_meas_mode() {
-    return _cm_meas_mode;
+uint8_t cm_tic_get_mode() {
+    return _cm_tic_mode;
+}
+
+void cm_div_reset() {
+    gpio_put(PDIVRST_PIN, 0);
+    sleep_ms(10);
+    gpio_put(PDIVRST_PIN, 1);
 }

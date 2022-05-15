@@ -13,6 +13,7 @@ extern "C" {
 #define PDIVCS_PIN  17      // GATE_GPIO
 #define PDIVCLK_PIN 18
 #define PDIVTX_PIN  19
+#define PDIVRST_PIN 2       // Reset PIN
 
 // communication with TDC7200 of the Counter Module
 #define TRIGG_PIN   15
@@ -63,7 +64,11 @@ extern "C" {
 #define MHZ_16     16000000
 
 #define MODE1_TIMEOUT_NS 1100
-#define MODE2_TIMEOUT_NS 5000000
+#define MODE2_TIMEOUT_NS 2000000000   // 2s
+
+#define FNC_TI     1
+#define FNC_FREQ    2
+#define FNC_PERIOD  3
 
 void cm_forward(const char* message);
 
@@ -81,7 +86,9 @@ uint8_t cm_set_refclock(uint8_t source, uint32_t freq_hz);
 
 tdc7200_meas_t cm_tic_measure();
 
-uint8_t cm_tic_set_meas_mode(uint8_t measurement_mode);
+uint8_t cm_tic_set_mode(uint8_t measurement_mode);
+
+uint8_t cm_tic_get_mode();
 
 uint8_t cm_tic_set_calperiods(uint8_t periods);
 
@@ -95,8 +102,26 @@ uint8_t cm_tic_pet_enable(uint8_t on);
 
 uint8_t cm_tic_pet_enabled();
 
-uint8_t cm_get_meas_mode();
+uint32_t cm_tic_get_pet();
 
-uint32_t cm_get_pet();
+void cm_tic_read_channel(uint8_t source);
+
+void cm_tic_get_channel(char* buf, uint8_t source);
+
+void cm_freq_set_gatefreq(double freq);
+
+double cm_freq_get_gatefreq();
+
+void cm_freq_set_nominalfreq(double freq);
+
+double cm_freq_get_nominalfreq();
+
+double cm_freq_measure();
+
+uint8_t cm_set_fnc(uint8_t fnc_to_measure);
+
+uint8_t cm_get_fnc();
+
+void cm_div_reset();
 
 #endif

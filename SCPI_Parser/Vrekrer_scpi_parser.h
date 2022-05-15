@@ -14,17 +14,17 @@ Header file.
 
 /// Max branch size of the command tree and max number of parameters.
 #ifndef SCPI_ARRAY_SYZE
-  #define SCPI_ARRAY_SYZE 16
+  #define SCPI_ARRAY_SYZE 12
 #endif
 
 /// Max number of valid tokens.
 #ifndef SCPI_MAX_TOKENS
-  #define SCPI_MAX_TOKENS 32
+  #define SCPI_MAX_TOKENS 48
 #endif
 
 /// Max number of registered commands.
 #ifndef SCPI_MAX_COMMANDS
-  #define SCPI_MAX_COMMANDS 32
+  #define SCPI_MAX_COMMANDS 48
 #endif
 
 /// Length of the message buffer.
@@ -181,7 +181,8 @@ class SCPI_Parser {
     InvalidCalPeriods,
     InvalidForceCalibration,
     InvalidNumberOfStops,
-    InvalidEdgeDef
+    InvalidEdgeDef,
+    Unsupported
   };
   ///Variable that holds the last error code.
   ErrorCode last_error = ErrorCode::NoError;

@@ -582,7 +582,7 @@ tdc7200_meas_t tdc7200_measure(tdc7200_obj_t *self) {
         result.error = 10;
         return result;
     }
-    e = _wait_for_edge(self->INTB, 1, (uint32_t)2e6);
+    e = _wait_for_edge(self->INTB, 1, (uint32_t)2e7);
     if (e == 2) {
         #if LOG >= LOG_INFO
         printf("# ERROR 7: Timed out waiting for INTB edge.\n");
