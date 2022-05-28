@@ -24,6 +24,9 @@ target_sources(${PROJECT_NAME} PRIVATE ts_controller.cpp
     TDC7200/tdc7200.c
 #    CounterModule/counter_module_v1.c
     CounterModule/counter_module_v2.c
+    BME280/common.c
+    BME280/bmp2.c
+    BME280/bmp280.c
     SCPI_Parser/Vrekrer_scpi_parser.cpp
 )
 
@@ -32,7 +35,7 @@ target_link_libraries(${PROJECT_NAME}
     pico_stdio
     pico_double
     pico_multicore
-    hardware_timer
+    pico_time
     hardware_pio
     hardware_spi
     hardware_clocks

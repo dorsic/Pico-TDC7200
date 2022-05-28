@@ -4,13 +4,8 @@
 #include "pico/stdlib.h"
 #include "counter_module_v2.h"
 #include "tic_gate.pio.h"
-
-#ifdef PDIVCOM_UART
 #include "uart.pio.h"
-#endif
-#ifdef PDIVCOM_SPI
-#include "hardware/spi.h"
-#endif
+
 
 tdc7200_obj_t tdc;
 uint8_t _tdc_need_reconfigure = 0;
@@ -50,7 +45,6 @@ uint16_t cm_uart_readline(char *buf) {
 }
 
 void cm_uart_write(const char* message) {
-//    printf("%s", message);
     pio_sm_set_enabled(UART_PIO, UART_TX_SM, 0);
     pio_sm_restart(UART_PIO, UART_TX_SM);
     pio_sm_set_enabled(UART_PIO, UART_TX_SM, 1);
@@ -88,58 +82,16 @@ void cm_initialize_uart() {
 }
 #endif
 
-#ifdef PDIVCOM_SPI
-void cm_spi_write(const char* message) {
-    gpio_put(PDIVCS_PIN, 0); // Indicate beginning of communication
-    spi_write_blocking(SPI, message, strlen(message)); // Send data[]
-    gpio_put(PDIVCS_PIN, 1); // Signal end of communication
-}
-
-uint16_t cm_spi_writeread(const char* message, char* buf, uint16_t buflen) {
-    strcpy(buf, message);
-    gpio_put(PDIVCS_PIN, 0); // Indicate beginning of communication
-    uint16_t n = spi_write_read_blocking(SPI, message, buf, buflen);
-    gpio_put(PDIVCS_PIN, 1); // Signal end of communication
-    return n;
-}
-
-void cm_initialize_spi() {
-    spi_init(SPI, SPI_MHZ * 1000000);    //Initialise GPIO pins for SPI communication
-    gpio_set_function(PDIVRX_PIN, GPIO_FUNC_SPI);
-    gpio_set_function(PDIVCLK_PIN, GPIO_FUNC_SPI);
-    gpio_set_function(PDIVTX_PIN, GPIO_FUNC_SPI);
-    // Configure Chip Select
-    gpio_init(PDIVCS_PIN); // Initialise CS Pin
-    gpio_set_dir(PDIVCS_PIN, GPIO_OUT); // Set CS as output
-    gpio_put(PDIVCS_PIN, 1); // Set CS High to indicate no currect SPI communication
-}
-#endif
-
 void cm_forward(const char* message) {
-    #ifdef PDIVCOM_UART
     cm_uart_write(message);
-    #endif
-    #ifdef PDIVCOM_SPI
-    cm_spi_write(message);
-    #endif
 }
 
 uint16_t cm_forward_and_read(const char* message, char* buf) {
-    #ifdef PDIVCOM_UART
     return cm_uart_writereadline(message, buf);
-    #endif
-    #ifdef PDIVCOM_SPI
-    cm_spi_write(message);
-    #endif
 }
 
 void cm_initialize_com() {
-    #ifdef PDIVCOM_UART
     cm_initialize_uart();
-    #endif    
-    #ifdef PDIVCOM_SPI
-    cm_initialize_spi();
-    #endif    
 }
 
 void cm_initialize() {
@@ -149,7 +101,6 @@ void cm_initialize() {
     gpio_set_dir(PDIVRST_PIN, GPIO_OUT);
     gpio_put(PDIVRST_PIN, 1);
 
-    // init PicoDIV SPI communication
     cm_initialize_com();
 
     gpio_init(SWCHIN1_PIN);
@@ -233,7 +184,6 @@ uint8_t cm_set_refclock(uint8_t source, uint32_t freq_hz) {
 uint32_t cm_tic_get_pet() {
     uint16_t n;
     n = cm_forward_and_read(":TIC:PET?\n", _buf);
-//    printf("Read %d chars (%s)\n", n, buf);
     if (n>0) {
         return atoi(_buf);
     } else {
@@ -290,7 +240,6 @@ tdc7200_meas_t cm_tic_measure() {
     if (_cm_tic_mode == 3 && _cm_tic_pet_enabled) {
         sprintf(_buf, ":TIC:STAR %s\n", cm_start_ch);
         cm_forward_and_read(_buf, _buf);
-//        cm_forward_and_read(":TIC:STOP REF\n", _buf);
         tdc7200_meas_t r1 = tdc7200_measure(&tdc);
         sprintf(_buf, ":TIC:STAR %s\n", cm_stop_ch);
         cm_forward_and_read(_buf, _buf);

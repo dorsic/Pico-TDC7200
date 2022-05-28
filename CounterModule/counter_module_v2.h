@@ -106,7 +106,7 @@ uint32_t cm_tic_get_pet();
 
 void cm_tic_read_channel(uint8_t source);
 
-void cm_tic_get_channel(char* buf, uint8_t source);
+//void cm_tic_get_channel(char* buf, uint8_t source);
 
 void cm_freq_set_gatefreq(double freq);
 

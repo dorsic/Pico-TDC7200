@@ -127,10 +127,10 @@ void cm_tic_get_channel(char* buf, uint8_t source);
 
 
 // valid source CHA | CHB
-void cm_tic_set_start(uint8_t source);
+void cm_tic_set_start(uint8_t source, uint8_t store_value);
 
 // valid source CHB | DIVCLK | REFCLK
-void cm_tic_set_stop(uint8_t source);
+void cm_tic_set_stop(uint8_t source, uint8_t store_value);
 
 void cm_div_reset();
 

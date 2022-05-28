@@ -3,25 +3,33 @@
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
 #include "pico/double.h"
+#include "pico/time.h"
 #include "hardware/pio.h"
 #include "hardware/clocks.h"
+#include "hardware/spi.h"
 #include "SCPI_parser/Vrekrer_scpi_parser.h"
 
 extern "C" {
     #include "CounterModule/counter_module_v2.h"
 //    #include "CounterModule/counter_module_v1.h"
+    #include "BME280/bmp280.h"
 }
 
 #define LED 25
 #define OUT_XO_GPIO 21
 
 SCPI_Parser ts_instrument;
+SCPI_Interface inst_interface = SCPI_Interface();
 
 uint32_t ref_freq_hz = MHZ_12;
 uint32_t ref_per_ps = 1.0e12/MHZ_12;
 
-bool meas_enabled = false;
+uint8_t meas_enabled = 0;
 char str[32];
+
+struct bmp2_data bme280_data;
+bool timer_callback(repeating_timer_t *rt);
+bool led_state = 0;
 
 //#define DATA_BUF 256
 //double data[DATA_BUF];
@@ -131,88 +139,6 @@ void scpi_errorhandler(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
 }
 
 #ifdef COUNTER_MODULE_V1_H_
-/*
-void pdiv_set_freq(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
-    gpio_put(LED, 1);
-    if (parameters.Size() > 0) {
-        uint32_t p = atoi(parameters[0]);
-        cm_pdiv_set_freq_hz(p);
-        printf("Set divider freq to %u\n", p);
-    }
-    gpio_put(LED, 0);
-}
-
-void pdiv_set_plength(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
-    gpio_put(LED, 1);
-    if (parameters.Size() > 0) {
-        cm_pdiv_set_pulselength(parameters[0]);
-        printf("Set pulse length to %s\n", parameters[0]);
-    }
-    gpio_put(LED, 0);
-}
-
-void pdiv_set_ref(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
-    gpio_put(LED, 1);
-    if (parameters.Size() > 0) {
-        if (strcmp(parameters[0], "XO") == 0)
-            cm_pdiv_set_refclock(SOURCE_XO, XOSC_MHZ*MHZ_1);
-        else if (strcmp(parameters[0], "EXT") == 0)
-            cm_pdiv_set_refclock(SOURCE_EXTCLK, ref_freq_hz);
-        else {
-            ts_instrument.last_error = ts_instrument.ErrorCode::UnknownSource;
-            scpi_errorhandler(commands, parameters, interface);
-        }
-    }
-    gpio_put(LED, 0);   
-}
-
-void pdiv_delay(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
-    gpio_put(LED, 1); 
-    if (parameters.Size() > 0) {
-        uint32_t p = atoi(parameters[0]);
-        cm_pdiv_delay(p);
-        printf("Divider delayed by %u cycles \n", p);
-    } 
-    gpio_put(LED, 0);
-}
-
-void pdiv_enable(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
-    gpio_put(LED, 1);
-
-    if (parameters.Size() > 0) {
-        if (strcmp(parameters[0], "ON") == 0 || strcmp(parameters[0], "1") == 0)
-            cm_pdiv_enable(true);
-        else if (strcmp(parameters[0], "OFF") == 0 || strcmp(parameters[0], "0") == 0)
-            cm_pdiv_enable(false);
-    }   
-    gpio_put(LED, 0);
-}
-
-
-void ref_source(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
-    gpio_put(LED, 1);
-    if (parameters.Size() > 1) {
-        ref_freq_hz = atoi(parameters[1]);
-        if (strcmp(parameters[0], "INT") == 0) {
-            printf("setting ref clock to Int @ %d\n", ref_freq_hz);
-            cm_set_refclock(SOURCE_INTCLK, ref_freq_hz);
-            if (cm_pdiv_get_refclock() == SOURCE_REFCLK) {
-                cm_pdiv_set_refclock(SOURCE_REFCLK, ref_freq_hz);
-            }
-        } else if (strcmp(parameters[0], "EXT") == 0) {
-            printf("setting ref clock to Ext @ %d\n", ref_freq_hz);
-            cm_set_refclock(SOURCE_EXTCLK, ref_freq_hz);
-            if (cm_pdiv_get_refclock() == SOURCE_REFCLK) {
-                cm_pdiv_set_refclock(SOURCE_REFCLK, ref_freq_hz);
-            }
-        } else {
-            ts_instrument.last_error = ts_instrument.ErrorCode::UnknownSource;
-            scpi_errorhandler(commands, parameters, interface);
-        }
-    }
-    gpio_put(LED, 0);
-}
-*/
 
 void tic_set_start(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
     gpio_put(LED, 1);   
@@ -227,7 +153,7 @@ void tic_set_start(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
             scpi_errorhandler(commands, parameters, interface);
         }
         if (src < 254) {
-            cm_tic_set_start(src);
+            cm_tic_set_start(src, 1);
             _ack(interface);
         }
     } else {
@@ -253,7 +179,7 @@ void tic_set_stop(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
             scpi_errorhandler(commands, parameters, interface);
         }
         if (src < 254) {
-            cm_tic_set_stop(src);
+            cm_tic_set_stop(src, 1);
             _ack(interface);
         }
     } else {
@@ -298,7 +224,6 @@ void ref_source(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
         ref_per_ps = (uint32_t)(1.0e9/(ref_freq_hz/1.0e3));
         _ack(interface);
     }
-//    printf("Done ref_source");
     gpio_put(LED, 0);
 }
 
@@ -344,10 +269,10 @@ void tic_set_calforce(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
     gpio_put(LED, 1);
     if (parameters.Size() > 0) {
         if (strcmp(parameters[0], "ON") == 0 || strcmp(parameters[0], "1") == 0) {
-            cm_tic_set_force_calibration(true);
+            cm_tic_set_force_calibration(1);
             _ack(interface);
         } else if (strcmp(parameters[0], "OFF") == 0 || strcmp(parameters[0], "0") == 0) {
-            cm_tic_set_force_calibration(false);
+            cm_tic_set_force_calibration(0);
             _ack(interface);
         } else {
             ts_instrument.last_error = ts_instrument.ErrorCode::InvalidForceCalibration;
@@ -383,7 +308,7 @@ void meas_enable(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
 void tic_set_edge(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
     gpio_put(LED, 1);
     uint8_t src = 0;
-    bool falling = false;
+    uint8_t falling = 0;
     if (parameters.Size() > 1) {
         if (strcmp(parameters[0], "START") == 0) {
             src = SOURCE_START;
@@ -396,9 +321,9 @@ void tic_set_edge(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
             return;
         }
         if (strcmp(parameters[1], "RISING") == 0 || strcmp(parameters[1], "1") == 0) {
-            falling = false;
+            falling = 0;
         } else if (strcmp(parameters[1], "FALLING") == 0 || strcmp(parameters[1], "0") == 0) {
-            falling = true;
+            falling = 1;
         } else {
             ts_instrument.last_error = ts_instrument.ErrorCode::InvalidEdgeDef;
             scpi_errorhandler(commands, parameters, interface);
@@ -419,10 +344,10 @@ void tic_pet_enable(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
     gpio_put(LED, 1);
     if (parameters.Size() > 0) {
         if (strcmp(parameters[0], "ON") == 0 || strcmp(parameters[0], "1") == 0) {
-            if (cm_tic_pet_enable(true))
+            if (cm_tic_pet_enable(1))
                 _ack(interface);
         } else if (strcmp(parameters[0], "OFF") == 0 || strcmp(parameters[0], "0") == 0) {
-            if (cm_tic_pet_enable(false))
+            if (cm_tic_pet_enable(0))
                 _ack(interface);
         } else {
             ts_instrument.last_error = ts_instrument.ErrorCode::InvalidForceCalibration;
@@ -440,6 +365,7 @@ void read_pet(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
 void meas_time(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
     char buf[32];
     gpio_put(LED, 1);
+    /*
     cm_tic_get_channel(buf, SOURCE_START);
     sprintf(str, ":TIC:STAR %s\n", buf);
     cm_forward_and_read(str, str);
@@ -448,6 +374,7 @@ void meas_time(SCPI_C commands, SCPI_P parameters, SCPI_I interface) {
     sprintf(str, ":TIC:STOP %s\n", buf);
     cm_forward_and_read(str, str);    
     printf(str, '\n');
+    */
     cm_set_fnc(FNC_TI);
     gpio_put(LED, 0);
 }
@@ -599,16 +526,43 @@ void initialize_scpi() {
     ts_instrument.SetErrorHandler(&scpi_errorhandler);
 }
 
+bool bme280_timer_callback(repeating_timer_t *rt) {
+    bme280_data = bme280_get_data();
+    if (led_state) {
+        sprintf(str, "#ENV %.3f %.3f \n", bme280_data.temperature, bme280_data.pressure);
+        inst_interface.putchars(str);
+        //printf("#ENV %.3f %.3f \n", bme280_data.temperature, bme280_data.pressure);    
+    }
+    led_state = (led_state+1)%2;
+    gpio_put(LED, led_state);
+    return true; // keep repeating
+}
+
 void core1_main() {
     uint32_t tm = time_us_32();
     uint8_t on = 1;
-    while(true) {
-        ts_instrument.ProcessInput(SCPI_Interface(), "\n");
-        if ((time_us_32() - tm) > 500000) {
-            on = (on+1)%2;
-            gpio_put(LED, on);
-            tm = time_us_32();
+
+    repeating_timer_t bme280_timer;
+
+    bme280_initialize();
+    printf("status: %i, NULL_PTR: %i\n", bmp280_get_status(), BMP2_E_NULL_PTR );
+    if (bmp280_get_status() != BMP2_E_NULL_PTR) {
+        // negative timeout means exact delay (rather than delay between callbacks)
+        if (!add_repeating_timer_ms(-500, bme280_timer_callback, NULL, &bme280_timer)) {
+            printf("WARNING> Failed to initialize repeating timer for environment sensor, no enviroment data will be available. \n");
         }
+    } else {
+        printf("WARNING> Failed to initialize environment sensor, no enviroment data will be available. \n");
+    }
+    while(true) {
+        ts_instrument.ProcessInput(inst_interface, "\n");
+        // if ((time_us_32() - tm) > 500000) {
+        //     on = (on+1)%2;
+        //     gpio_put(LED, on);
+        //     tm = time_us_32();
+        // }
+
+        // bme280_data = bme280_get_data();
     }
 }
 
@@ -617,29 +571,18 @@ void fnc_tic() {
     uint16_t j = 0;
 
     if (cm_tic_get_mode() == 3 & !cm_tic_pet_enabled()) {
-    /*                cm_forward_and_read("DIV:TRIG:FREQ 1000000\n", str);
-        if (strcmp(str, "OK") != 0)
-            printf("Error configuring mode 3 measurement (setting trig freq)\n");
-        cm_forward_and_read("DIV:TRIG:PULS 50%\n", str);
-        if (strcmp(str, "OK") != 0)
-            printf("Error configuring mode 3 measurement (setting trig pulselength)\n");
-        cm_forward_and_read("DIV:TRIG:SYNC 0\n", str);
-        if (strcmp(str, "OK") != 0)
-            printf("Error configuring mode 3 measurement (setting trig sync)\n");
-        cm_forward_and_read("DIV:TRIG:ENAB 1\n", str);
-        if (strcmp(str, "OK") != 0)
-            printf("Error configuring mode 3 measurement (enabling trig)\n");
-    */                
+        #ifdef COUNTER_MODULE_V1_H_
+        cm_tic_set_stop(SOURCE_REFCLK, 0);
+        #endif
+        #ifdef COUNTER_MODULE_V2_H_
         cm_forward_and_read("TIC:STOP REF\n", str);
         if (strcmp(str, "OK") != 0)
             printf("# Error configuring mode 3 measurement (settig stop signal)\n");
-        if (!cm_tic_pet_enable(true))
+        #endif
+        if (!cm_tic_pet_enable(1))
             printf("# Error configuring mode 3 measurement (PET initialization)\n");
-    //                if (!cm_tic_set_nstops(1))
-    //                    printf("Error configuring mode 3 measurement (number of stops)\n");
     } else if (cm_tic_get_mode() != 3 & cm_tic_pet_enabled()) {
-        cm_tic_pet_enable(false);
-        cm_forward_and_read("DIV:TRIG:ENAB 0\n", str);
+        cm_tic_pet_enable(0);
     }
     gpio_put(LED, 0);
     msmt = cm_tic_measure();
@@ -688,7 +631,6 @@ void fnc_freq() {
 
 int main() {
     clock_gpio_init(OUT_XO_GPIO, CLOCKS_CLK_GPOUT0_CTRL_AUXSRC_VALUE_XOSC_CLKSRC, 1);
-
     stdio_init_all();
     sleep_ms(2000);
     gpio_init(LED);
@@ -696,9 +638,9 @@ int main() {
     gpio_put(LED, 1);
 
     printf("# Awaiting messages in 1s...\n");
-    cm_initialize();
     initialize_scpi();
     multicore_launch_core1(core1_main);
+    cm_initialize();
     sleep_ms(1000);
     while(true) {
         if (meas_enabled) {
